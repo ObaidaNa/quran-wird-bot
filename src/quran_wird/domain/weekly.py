@@ -74,7 +74,12 @@ class WeekSummary:
 
     @property
     def everyone_perfect(self) -> bool:
-        return bool(self.members) and self.completions == self.possible_completions
+        """Whether every member read every day they were answerable for.
+
+        A week with nothing to read is not a perfect week: without the first
+        check, a group that paused for a week would be congratulated for it.
+        """
+        return self.possible_completions > 0 and self.completions == self.possible_completions
 
 
 def week_bounds(day: dt.date, week_start_weekday: int) -> tuple[dt.date, dt.date]:

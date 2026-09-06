@@ -8,7 +8,7 @@ from telegram import Update
 from telegram.ext import Application, CommandHandler, ContextTypes, filters
 
 from ..deps import get_deps
-from ..jobs.send_daily import current_view, send_wird
+from ..jobs.send_daily import current_view, schedule_reminders_for, send_wird
 from ..messages import ar, render
 from ..messages.phrases import phrases
 from ..tg.guards import is_group_admin
@@ -46,14 +46,21 @@ async def send_now(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         await message.reply_text(ar.ADMIN_ONLY)
         return
 
+    deps = get_deps(context)
     try:
-        task_id = await send_wird(context.bot, get_deps(context), chat.id, force=True)
+        task_id = await send_wird(context.bot, deps, chat.id, force=True)
     except PageImageMissing:
         await message.reply_text(ar.PAGES_MISSING)
         return
 
     if task_id is None:
         await message.reply_text(ar.ALREADY_SENT_TODAY)
+        return
+
+    # The daily job queues reminders after sending; a wird sent by hand needs
+    # them just as much, or nobody is ever reminded about it.
+    if context.job_queue is not None:
+        await schedule_reminders_for(deps, context.job_queue, chat.id, task_id)
 
 
 def register(app: Application) -> None:

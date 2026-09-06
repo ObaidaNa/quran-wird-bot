@@ -11,6 +11,7 @@ from telegram.ext import Application, ChatMemberHandler, CommandHandler, Context
 from ..db.repo import GroupRepo, SubscriberRepo
 from ..db.session import session_scope
 from ..deps import get_deps
+from ..jobs.scheduler import reschedule_chat
 from ..messages import ar
 
 log = logging.getLogger(__name__)
@@ -52,12 +53,19 @@ async def on_my_chat_member(update: Update, context: ContextTypes.DEFAULT_TYPE) 
             # progress, so re-adding the bot resumes instead of restarting.
             await groups.set_active(chat.id, False)
             log.info("removed from chat %s; group deactivated", chat.id)
+            # Drops the group's jobs too; otherwise they keep firing into a
+            # chat the bot is no longer in.
+            await reschedule_chat(context.application, chat.id)
             return
 
         _, created = await groups.get_or_create(
             chat.id, title=chat.title, timezone=deps.settings.default_timezone
         )
         await groups.set_active(chat.id, True)
+
+    # Jobs live in memory and are otherwise only built at startup, so without
+    # this a group that adds the bot receives nothing until the next restart.
+    await reschedule_chat(context.application, chat.id)
 
     await context.bot.send_message(chat.id, ar.ADDED_TO_GROUP)
     log.info("added to chat %s (%s), new=%s", chat.id, chat.title, created)
@@ -97,6 +105,10 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         await groups.set_active(chat.id, True)
         count = await SubscriberRepo(session).count_active(chat.id)
         page, khatmah = group.current_page, group.khatmah_number
+
+    # /start is the other way a group comes into being — and the way a group
+    # that was paused or re-added gets its jobs back.
+    await reschedule_chat(context.application, chat.id)
 
     if created:
         await message.reply_text(ar.START_GROUP_NEW)

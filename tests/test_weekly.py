@@ -145,6 +145,12 @@ class TestPerfectWeek:
         assert summary.everyone_perfect is False
         assert summary.completion_rate == 0.0
 
+    def test_a_week_with_no_wird_is_not_a_perfect_week(self):
+        # A group that paused for a week must not be congratulated for it.
+        summary = summarise([], [member(1, "أحمد"), member(2, "محمد")])
+        assert summary.everyone_perfect is False
+        assert summary.perfect == []
+
 
 # --------------------------------------------------------------- the job
 
@@ -263,12 +269,16 @@ class TestWeeklyReportJob:
         assert await send_weekly_report(FakeBot(), deps, CHAT, on=FRIDAY) is False
 
     async def test_a_week_with_no_wird_still_reports(self, session, deps, group):
-        # A group that paused for a week gets a quiet board, not silence and
-        # not a crash.
+        # A group that paused for a week gets a quiet board, not silence, not a
+        # crash — and above all not a celebration of a week nobody read.
         await subscribe(session, "أحمد")
         bot = FakeBot()
         assert await send_weekly_report(bot, deps, CHAT, on=FRIDAY) is True
-        assert "لوحة شرف الأسبوع" in bot.messages[0].text
+
+        text = bot.messages[0].text
+        assert "لوحة شرف الأسبوع" in text
+        assert "الأسبوع كامل للجميع" not in text
+        assert "لم يكتمل لأحدٍ الأسبوع" in text
 
 
 class TestWeekPreview:
