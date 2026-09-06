@@ -1,0 +1,18 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+*.egg-info/
+.pytest_cache/
+.ruff_cache/
+
+# Secrets & data
+.env
+data/*.db
+data/*.db-wal
+data/*.db-shm
+data/backups/
+
+# Generated assets (rebuild with: uv run scripts/build_pages.py)
+assets/pages/
+assets/hafs.zip
