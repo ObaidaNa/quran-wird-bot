@@ -16,3 +16,4 @@ data/backups/
 # Generated assets (rebuild with: uv run scripts/build_pages.py)
 assets/pages/
 assets/hafs.zip
+assets/*.part

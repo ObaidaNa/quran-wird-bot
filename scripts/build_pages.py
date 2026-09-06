@@ -4,6 +4,9 @@
     uv run scripts/build_pages.py
     uv run scripts/build_pages.py --width 1400 --force
 
+The source archive is downloaded from Quranpedia on first use if it is not
+already in assets/; see scripts/source_archive.py.
+
 Why normalize? Pages 1 and 2 are 235x235 in the source while pages 3-604 are
 345x550. Left alone, the first album renders inconsistently, so every page is
 centered on a white canvas with the fixed 345:550 ratio.
@@ -21,6 +24,10 @@ import sys
 import zipfile
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+
+from source_archive import SOURCE_URL, ensure  # noqa: E402
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_ZIP = PROJECT_ROOT / "assets" / "hafs.zip"
@@ -83,14 +90,18 @@ def render_page(svg: bytes, out_path: Path, width: int, height: int, magick: str
 def main() -> int:
     ap = argparse.ArgumentParser(description="Build the mushaf page images")
     ap.add_argument("--zip", type=Path, default=DEFAULT_ZIP, help="source archive")
+    ap.add_argument(
+        "--no-download",
+        action="store_true",
+        help=f"fail instead of fetching the archive from {SOURCE_URL}",
+    )
     ap.add_argument("--out", type=Path, default=DEFAULT_OUT, help="output directory")
     ap.add_argument("--width", type=int, default=1240, help="image width in pixels")
     ap.add_argument("--jobs", type=int, default=0, help="parallel workers (0=auto)")
     ap.add_argument("--force", action="store_true", help="rebuild pages that already exist")
     args = ap.parse_args()
 
-    if not args.zip.exists():
-        sys.exit(f"archive not found: {args.zip}")
+    args.zip = ensure(args.zip, allow_download=not args.no_download)
 
     magick = check_tools()
     height = round(args.width * PAGE_RATIO)

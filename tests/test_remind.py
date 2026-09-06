@@ -23,6 +23,12 @@ TODAY = dt.date.today()
 @pytest.fixture
 async def group(session):
     g, _ = await GroupRepo(session).get_or_create(CHAT)
+    # Quiet hours off, deliberately: they default to 23:00-07:00, and a suite
+    # that inherits them fails for eight hours every night on correct code.
+    # The skipping behaviour is tested on its own below, with a window built
+    # around the current time so it holds whatever the hour.
+    g.quiet_hours_start = None
+    g.quiet_hours_end = None
     for page in range(1, 5):
         session.add(
             PageIndex(
@@ -193,6 +199,35 @@ class TestSendReminder:
         bot = FakeBot()
         await send_reminder(bot, deps, CHAT, task.id, 1)
         assert "&lt;b&gt;" in bot.sent_texts[0]
+
+
+class TestQuietHoursSkip:
+    async def test_a_reminder_inside_the_quiet_window_is_skipped(self, session, deps, task, group):
+        # The window is built around now, so this holds at any hour.
+        from zoneinfo import ZoneInfo
+
+        now = dt.datetime.now(ZoneInfo(group.timezone))
+        group.quiet_hours_start = (now - dt.timedelta(hours=1)).time()
+        group.quiet_hours_end = (now + dt.timedelta(hours=1)).time()
+        await subscribe(session, "أحمد")
+
+        bot = FakeBot()
+        assert await send_reminder(bot, deps, CHAT, task.id, 1) == 0
+        assert bot.messages == []
+
+    async def test_the_skipped_reminder_is_not_marked_as_sent(self, session, deps, task, group):
+        # Skipping is not sending: the sequence must stay available so a later
+        # reminder outside the window can still go out.
+        from zoneinfo import ZoneInfo
+
+        now = dt.datetime.now(ZoneInfo(group.timezone))
+        group.quiet_hours_start = (now - dt.timedelta(hours=1)).time()
+        group.quiet_hours_end = (now + dt.timedelta(hours=1)).time()
+        await subscribe(session, "أحمد")
+
+        await send_reminder(FakeBot(), deps, CHAT, task.id, 1)
+
+        assert await TaskRepo(session).reminder_sent(task.id, 1) is False
 
 
 class TestMissedNotices:

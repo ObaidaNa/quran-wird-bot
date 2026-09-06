@@ -1,6 +1,9 @@
 #!/usr/bin/env python3
 """Build the mushaf reference index from mushaf-content.json inside hafs.zip.
 
+The archive is downloaded from Quranpedia on first use if it is not already in
+assets/; see scripts/source_archive.py.
+
     uv run scripts/build_index.py
 
 Fills three reference tables:
@@ -24,6 +27,10 @@ import zipfile
 from pathlib import Path
 
 from sqlalchemy import delete, func, select
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+
+from source_archive import SOURCE_URL, ensure  # noqa: E402
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(PROJECT_ROOT / "src"))
@@ -154,11 +161,15 @@ def verify(session) -> list[str]:
 def main() -> int:
     ap = argparse.ArgumentParser(description="Build the mushaf reference index")
     ap.add_argument("--zip", type=Path, default=DEFAULT_ZIP)
+    ap.add_argument(
+        "--no-download",
+        action="store_true",
+        help=f"fail instead of fetching the archive from {SOURCE_URL}",
+    )
     ap.add_argument("--db", type=Path, default=DEFAULT_DB)
     args = ap.parse_args()
 
-    if not args.zip.exists():
-        sys.exit(f"archive not found: {args.zip}")
+    args.zip = ensure(args.zip, allow_download=not args.no_download)
 
     print(f"source  : {args.zip}")
     print(f"database: {args.db}\n")

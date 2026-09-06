@@ -292,6 +292,10 @@ class TestDailyCycle:
     async def _group(self, session):
         group, _ = await GroupRepo(session).get_or_create(CHAT)
         group.active_weekdays = list(range(7))
+        # See tests/test_remind.py: the default quiet hours would make this
+        # suite fail every night between 23:00 and 07:00.
+        group.quiet_hours_start = None
+        group.quiet_hours_end = None
         await session.flush()
         return group
 
