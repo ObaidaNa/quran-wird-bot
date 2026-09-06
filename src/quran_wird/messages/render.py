@@ -3,11 +3,13 @@
 from __future__ import annotations
 
 import datetime as dt
+from collections.abc import Sequence
 
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup
 
 from ..domain.schemas import TOTAL_PAGES, WirdView
-from ..tg.mentions import safe_name
+from ..tg.mentions import mention, safe_name
+from .phrases import phrases
 
 _ARABIC_DIGITS = str.maketrans("0123456789", "٠١٢٣٤٥٦٧٨٩")
 
@@ -37,6 +39,9 @@ MONTH_NAMES = (
     "تشرين الثاني",
     "كانون الأول",
 )
+
+# Beyond this, the finisher list is summarised rather than spelled out.
+MAX_NAMES_SHOWN = 6
 
 CB_DONE = "done"
 CB_WHO = "who"
@@ -112,3 +117,55 @@ def khatmah_progress_line(current_page: int, khatmah_number: int) -> str:
         f"   الصفحة {ar_num(current_page)} من {ar_num(TOTAL_PAGES)} · "
         f"بقيت {ar_num(TOTAL_PAGES - done)} صفحة"
     )
+
+
+def reminder_message(
+    *,
+    seq: int,
+    chat_id: int,
+    pages: tuple[int, int],
+    batch: Sequence,
+    missed: dict[int, int],
+    done_names: Sequence[str],
+    pending_total: int,
+    subscriber_total: int,
+) -> str:
+    """One reminder message addressed to a batch of members.
+
+    Only `batch` is mentioned, so a large group is reminded across several
+    messages instead of one that pings everybody at once.
+    """
+    start, end = pages
+    pages_label = (
+        f"الصفحة {ar_num(start)}" if start == end else f"الصفحات {ar_num(start)} – {ar_num(end)}"
+    )
+
+    parts = [f"⏰ <b>تذكير بورد اليوم</b> — {pages_label}", ""]
+    parts.append(" ".join(mention(m.user_id, m.display_name) for m in batch))
+    parts.append("")
+    parts.append(phrases.reminder(seq).pick(chat_id))
+
+    if done_names:
+        shown = "، ".join(safe_name(n) for n in done_names[:MAX_NAMES_SHOWN])
+        more = len(done_names) - MAX_NAMES_SHOWN
+        if more > 0:
+            shown += f" و{ar_num(more)} غيرهم"
+        parts.append(
+            f"\n✅ أنجز {ar_num(len(done_names))} من {ar_num(subscriber_total)}: {shown}"
+            f"\n⏳ وبقي {ar_num(pending_total)}"
+        )
+    else:
+        parts.append(f"\n⏳ لم يُنجز أحد بعد من {ar_num(subscriber_total)} — كن أوّلهم 🌿")
+
+    # The تقصير notice is per person, so it goes on its own line under the batch.
+    notices = [
+        f"🔸 {safe_name(m.display_name)}: "
+        + phrases.missed.pick(chat_id).format(n=ar_num(missed[m.user_id]))
+        for m in batch
+        if m.user_id in missed
+    ]
+    if notices:
+        parts.append("")
+        parts.extend(notices)
+
+    return "\n".join(parts)

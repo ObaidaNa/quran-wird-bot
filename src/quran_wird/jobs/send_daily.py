@@ -136,10 +136,27 @@ async def send_wird(
 async def job_send_daily(context: ContextTypes.DEFAULT_TYPE) -> None:
     """JobQueue entry point, one per group."""
     chat_id = context.job.chat_id
+    deps = get_deps(context)
     try:
-        await send_wird(context.bot, get_deps(context), chat_id)
+        task_id = await send_wird(context.bot, deps, chat_id)
     except (TelegramError, PageImageMissing):
         log.exception("chat %s: daily wird failed", chat_id)
+        return
+
+    if task_id is not None and context.job_queue is not None:
+        await schedule_reminders_for(deps, context.job_queue, chat_id, task_id)
+
+
+async def schedule_reminders_for(deps: Deps, job_queue, chat_id: int, task_id: int) -> int:
+    """Queue this wird's reminders. Returns how many were scheduled."""
+    from .remind import schedule_task_reminders
+
+    async with session_scope(deps.sessions) as session:
+        group = await GroupRepo(session).get(chat_id)
+        task = await TaskRepo(session).get(task_id)
+        if group is None or task is None:
+            return 0
+        return schedule_task_reminders(job_queue, group, task)
 
 
 async def current_view(deps: Deps, chat_id: int) -> WirdView | None:

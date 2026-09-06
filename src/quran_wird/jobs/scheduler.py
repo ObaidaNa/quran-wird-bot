@@ -15,9 +15,10 @@ from zoneinfo import ZoneInfo
 from telegram.ext import Application, JobQueue
 
 from ..db.models import Group
-from ..db.repo import GroupRepo
+from ..db.repo import GroupRepo, TaskRepo
 from ..db.session import session_scope
 from ..deps import DEPS_KEY, Deps
+from .remind import REMIND_JOB, schedule_task_reminders
 from .send_daily import job_send_daily
 
 log = logging.getLogger(__name__)
@@ -40,9 +41,11 @@ def job_name(kind: str, chat_id: int) -> str:
 
 
 def clear_group_jobs(job_queue: JobQueue, chat_id: int) -> None:
-    for kind in (SEND_JOB,):
-        for job in job_queue.jobs(pattern=f"^{kind}:{chat_id}$"):
-            job.schedule_removal()
+    for job in job_queue.jobs(pattern=f"^{SEND_JOB}:{chat_id}$"):
+        job.schedule_removal()
+    # Reminder job names carry the task id and sequence too.
+    for job in job_queue.jobs(pattern=f"^{REMIND_JOB}:{chat_id}:"):
+        job.schedule_removal()
 
 
 def schedule_group(job_queue: JobQueue, group: Group) -> None:
@@ -86,10 +89,20 @@ async def reschedule_all(app: Application) -> int:
     async with session_scope(deps.sessions) as session:
         groups = list(await GroupRepo(session).list_active())
 
-    for group in groups:
-        schedule_group(app.job_queue, group)
+    reminders = 0
+    async with session_scope(deps.sessions) as session:
+        tasks = TaskRepo(session)
+        by_chat = {g.chat_id: g for g in groups}
+        for group in groups:
+            schedule_group(app.job_queue, group)
+        # An open wird from before the restart still owes its reminders; the
+        # ones already sent are filtered by time here and by reminder_log later.
+        for task in await tasks.list_open():
+            group = by_chat.get(task.chat_id)
+            if group is not None:
+                reminders += schedule_task_reminders(app.job_queue, group, task)
 
-    log.info("scheduled jobs for %s group(s)", len(groups))
+    log.info("scheduled jobs for %s group(s), %s pending reminder(s)", len(groups), reminders)
     return len(groups)
 
 
