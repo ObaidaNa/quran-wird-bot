@@ -19,6 +19,8 @@ class FakeMessage:
     text: str | None = None
     caption: str | None = None
     reply_markup: object = None
+    # Whatever else the caller passed, so a test can assert on parse_mode.
+    kwargs: dict = field(default_factory=dict)
 
 
 class FakeBot:
@@ -60,7 +62,7 @@ class FakeBot:
         return FakeMessage(self._id(), photo=(FakePhotoSize("FID_SOLO"),))
 
     async def send_message(self, chat_id, text, reply_markup=None, **kw):
-        msg = FakeMessage(self._id(), text=text, reply_markup=reply_markup)
+        msg = FakeMessage(self._id(), text=text, reply_markup=reply_markup, kwargs=dict(kw))
         self.messages.append(msg)
         return msg
 

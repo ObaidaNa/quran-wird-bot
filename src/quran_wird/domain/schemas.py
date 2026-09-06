@@ -156,12 +156,45 @@ class WirdView(BaseModel):
     juz: int
     surah_names: str
     is_repeat: bool = False
+    # How many finished the wird this one repeats; 0 means nobody did, which is
+    # the difference between "we repeat because nobody read" and "because not
+    # everyone did" under the stricter advance rules.
+    repeat_done_count: int = 0
     done_names: list[str] = Field(default_factory=list)
     subscriber_count: int = 0
 
     @property
     def done_count(self) -> int:
         return len(self.done_names)
+
+
+class DaySummaryView(BaseModel):
+    """Payload for the short report posted when the day closes.
+
+    `done_names` holds the *subscribers* who finished; guests who pressed the
+    button are deliberately left out, because the rate and the advance rules are
+    both measured against the subscriber list.
+    """
+
+    task_date: dt.date
+    pages: PageRange
+    done_names: list[str] = Field(default_factory=list)
+    subscriber_count: int = 0
+    advanced: bool = False
+    next_pages: PageRange | None = None
+    top_streak_name: str | None = None
+    top_streak_days: int = 0
+    khatmah_completed: bool = False
+
+    @property
+    def done_count(self) -> int:
+        return len(self.done_names)
+
+    @property
+    def completion_rate(self) -> float:
+        if not self.subscriber_count:
+            return 0.0
+        return self.done_count / self.subscriber_count * 100
 
 
 # ========================= Members and reports =========================

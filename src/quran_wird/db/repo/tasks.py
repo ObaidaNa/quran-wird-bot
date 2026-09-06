@@ -59,6 +59,20 @@ class TaskRepo:
             .order_by(DailyTask.task_date.desc())
         )
 
+    async def latest(self, chat_id: int, *, before: dt.date | None = None) -> DailyTask | None:
+        """The group's most recent wird, optionally the last one before a date.
+
+        `send_wird` uses it to notice that today's pages are yesterday's pages
+        again, which is what makes a repeat visible to the group once close_day
+        stops leaving unfinished tasks open overnight.
+        """
+        stmt = select(DailyTask).where(DailyTask.chat_id == chat_id)
+        if before is not None:
+            stmt = stmt.where(DailyTask.task_date < before)
+        return await self.session.scalar(
+            stmt.order_by(DailyTask.task_date.desc(), DailyTask.id.desc()).limit(1)
+        )
+
     async def list_open(self) -> Sequence[DailyTask]:
         result = await self.session.scalars(
             select(DailyTask).where(DailyTask.status == TaskStatus.OPEN)

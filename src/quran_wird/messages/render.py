@@ -7,7 +7,7 @@ from collections.abc import Sequence
 
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup
 
-from ..domain.schemas import TOTAL_PAGES, WirdView
+from ..domain.schemas import TOTAL_PAGES, DaySummaryView, WirdView
 from ..tg.mentions import mention, safe_name
 from .phrases import phrases
 
@@ -56,12 +56,15 @@ def ar_date(day: dt.date) -> str:
     return f"{WEEKDAY_NAMES[day.weekday()]} {ar_num(day.day)} {MONTH_NAMES[day.month - 1]}"
 
 
+def pages_label(start: int, end: int) -> str:
+    """Renders "page N", or "pages N – M", in Arabic-Indic digits."""
+    if start == end:
+        return f"الصفحة {ar_num(start)}"
+    return f"الصفحات {ar_num(start)} – {ar_num(end)}"
+
+
 def pages_line(view: WirdView) -> str:
-    pages = view.pages
-    if pages.count == 1:
-        label = f"الصفحة {ar_num(pages.start)}"
-    else:
-        label = f"الصفحات {ar_num(pages.start)} – {ar_num(pages.end)}"
+    label = pages_label(view.pages.start, view.pages.end)
     return f"{label} · الجزء {ar_num(view.juz)} · {view.surah_names}"
 
 
@@ -83,13 +86,27 @@ def done_section(view: WirdView) -> str:
     return f"{header}\n{names}"
 
 
+REPEAT_NOTICE_NONE = "🔁 <i>نُعيد ورد الأمس — لم يُتمّه أحد.</i>"
+REPEAT_NOTICE_PARTIAL = "🔁 <i>نُعيد ورد الأمس — لم يُتمّه الجميع بعد.</i>"
+
+
+def repeat_notice(repeat_done_count: int) -> str:
+    """Why the same pages come round again.
+
+    Under the default `anyone` rule a repeat always means nobody read, but the
+    stricter rules repeat a wird that some members did finish, and telling them
+    they read nothing would be wrong.
+    """
+    return REPEAT_NOTICE_NONE if repeat_done_count == 0 else REPEAT_NOTICE_PARTIAL
+
+
 def wird_message(view: WirdView, phrase: str) -> str:
     parts = [
         f"📖 <b>ورد اليوم</b> — {ar_date(view.task_date)}",
         pages_line(view),
     ]
     if view.is_repeat:
-        parts.append("\n🔁 <i>نُعيد ورد الأمس — لم يُتمّه أحد.</i>")
+        parts.append(f"\n{repeat_notice(view.repeat_done_count)}")
     parts.append(f"\n{phrase}\n")
     parts.append(done_section(view))
     return "\n".join(parts)
@@ -136,11 +153,7 @@ def reminder_message(
     messages instead of one that pings everybody at once.
     """
     start, end = pages
-    pages_label = (
-        f"الصفحة {ar_num(start)}" if start == end else f"الصفحات {ar_num(start)} – {ar_num(end)}"
-    )
-
-    parts = [f"⏰ <b>تذكير بورد اليوم</b> — {pages_label}", ""]
+    parts = [f"⏰ <b>تذكير بورد اليوم</b> — {pages_label(start, end)}", ""]
     parts.append(" ".join(mention(m.user_id, m.display_name) for m in batch))
     parts.append("")
     parts.append(phrases.reminder(seq).pick(chat_id))
@@ -169,3 +182,54 @@ def reminder_message(
         parts.extend(notices)
 
     return "\n".join(parts)
+
+
+def day_summary(view: DaySummaryView) -> str:
+    """The short report posted when the day closes.
+
+    It names the finishers and nobody else: who fell behind is said privately in
+    the reminders, never announced to the group.
+    """
+    parts = [
+        f"🌙 <b>خُلاصة اليوم</b> — {ar_date(view.task_date)}",
+        pages_label(view.pages.start, view.pages.end),
+        "",
+    ]
+
+    if view.subscriber_count:
+        rate = ar_num(round(view.completion_rate))
+        parts.append(
+            f"✅ <b>أنجز {ar_num(view.done_count)} من {ar_num(view.subscriber_count)}</b> ({rate}٪)"
+        )
+    else:
+        parts.append(f"✅ <b>أنجز {ar_num(view.done_count)}</b>")
+
+    if view.done_names:
+        shown = "، ".join(safe_name(n) for n in view.done_names[:MAX_NAMES_SHOWN])
+        more = len(view.done_names) - MAX_NAMES_SHOWN
+        if more > 0:
+            shown += f" و{ar_num(more)} غيرهم"
+        parts.append(shown)
+    else:
+        parts.append("لم يُتمّ الورد أحدٌ اليوم… وغدًا يومٌ جديد 🌿")
+
+    # A streak of one day is just today; only a real run is worth announcing.
+    if view.top_streak_name and view.top_streak_days > 1:
+        parts.append(
+            f"\n🔥 أطول سلسلة: {safe_name(view.top_streak_name)}"
+            f" — {ar_num(view.top_streak_days)} يومًا"
+        )
+
+    parts.append(f"\n{next_wird_line(view)}")
+    return "\n".join(parts)
+
+
+def next_wird_line(view: DaySummaryView) -> str:
+    """What tomorrow holds: new pages, the same ones again, or a new khatmah."""
+    if view.khatmah_completed:
+        return "🎉 تمّت الختمة بحمد الله — وغدًا نبدأ ختمة جديدة من أوّل المصحف."
+    if view.advanced and view.next_pages is not None:
+        return f"➡️ ورد الغد: {pages_label(view.next_pages.start, view.next_pages.end)}"
+    if view.done_count == 0:
+        return "🔁 نُعيد صفحات اليوم غدًا بإذن الله — وباب الخير لا يُغلق."
+    return "🔁 لم يكتمل الورد للجميع، فنُعيد صفحات اليوم غدًا بإذن الله."

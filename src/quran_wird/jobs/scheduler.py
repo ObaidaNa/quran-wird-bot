@@ -18,6 +18,7 @@ from ..db.models import Group
 from ..db.repo import GroupRepo, TaskRepo
 from ..db.session import session_scope
 from ..deps import DEPS_KEY, Deps
+from .close_day import CLOSE_JOB, job_close_day
 from .remind import REMIND_JOB, schedule_task_reminders
 from .send_daily import job_send_daily
 
@@ -41,8 +42,9 @@ def job_name(kind: str, chat_id: int) -> str:
 
 
 def clear_group_jobs(job_queue: JobQueue, chat_id: int) -> None:
-    for job in job_queue.jobs(pattern=f"^{SEND_JOB}:{chat_id}$"):
-        job.schedule_removal()
+    for kind in (SEND_JOB, CLOSE_JOB):
+        for job in job_queue.jobs(pattern=f"^{kind}:{chat_id}$"):
+            job.schedule_removal()
     # Reminder job names carry the task id and sequence too.
     for job in job_queue.jobs(pattern=f"^{REMIND_JOB}:{chat_id}:"):
         job.schedule_removal()
@@ -70,12 +72,27 @@ def schedule_group(job_queue: JobQueue, group: Group) -> None:
         chat_id=group.chat_id,
         name=job_name(SEND_JOB, group.chat_id),
     )
+
+    # Deliberately every day, with no `days=` filter: a wird sent on the group's
+    # last active day of the week still has to close that night, even if the
+    # group has that weekday switched off.
+    job_queue.run_daily(
+        job_close_day,
+        time=dt.time(
+            hour=group.day_close_time.hour,
+            minute=group.day_close_time.minute,
+            tzinfo=tz,
+        ),
+        chat_id=group.chat_id,
+        name=job_name(CLOSE_JOB, group.chat_id),
+    )
     log.info(
-        "chat %s: wird scheduled at %s %s on weekdays %s",
+        "chat %s: wird scheduled at %s %s on weekdays %s, closing at %s",
         group.chat_id,
         group.send_time.strftime("%H:%M"),
         group.timezone,
         group.active_weekdays,
+        group.day_close_time.strftime("%H:%M"),
     )
 
 

@@ -112,8 +112,8 @@ class TestSendReminder:
 
         assert await send_reminder(bot, deps, CHAT, task.id, 1) == 1
         text = bot.sent_texts[0]
-        assert 'tg://user?id=1' in text
-        assert 'tg://user?id=2' in text
+        assert "tg://user?id=1" in text
+        assert "tg://user?id=2" in text
         assert "تذكير بورد اليوم" in text
 
     async def test_finishers_are_not_mentioned(self, session, deps, task):
@@ -123,8 +123,8 @@ class TestSendReminder:
         bot = FakeBot()
         await send_reminder(bot, deps, CHAT, task.id, 1)
         text = bot.sent_texts[0]
-        assert 'tg://user?id=1' not in text
-        assert 'tg://user?id=2' in text
+        assert "tg://user?id=1" not in text
+        assert "tg://user?id=2" in text
         assert "أنجز ١ من ٢" in text
 
     async def test_batches_of_four_by_default(self, session, deps, task):

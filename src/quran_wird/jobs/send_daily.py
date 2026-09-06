@@ -63,16 +63,28 @@ async def send_wird(
             log.info("chat %s: wird for %s already sent", chat_id, today)
             return None
 
-        # If yesterday's wird is still open, nobody finished it. Repeat the same
-        # pages rather than moving on, and mark the new task as the repeat.
-        previous = await tasks.get_open(chat_id)
-        if previous is not None:
-            pages = PageRange(start=previous.page_start, end=previous.page_end)
-            repeat_of = previous.id
-            await tasks.close(previous.id)
+        # An open wird from an earlier day means close_day never ran — a crash or
+        # downtime. Repeat those pages rather than moving on, and close the stale
+        # task so it cannot be repeated forever.
+        stale = await tasks.get_open(chat_id)
+        if stale is not None:
+            pages = PageRange(start=stale.page_start, end=stale.page_end)
+            previous = stale
+            await tasks.close(stale.id)
         else:
             pages = next_range(group.current_page, group.pages_per_day)
-            repeat_of = None
+            # Normally close_day already closed yesterday's wird, and simply did
+            # not advance the page pointer when the group had not earned it. The
+            # repeat then shows up as today's range matching yesterday's.
+            previous = await tasks.latest(chat_id, before=today)
+            if previous is not None and (previous.page_start, previous.page_end) != (
+                pages.start,
+                pages.end,
+            ):
+                previous = None
+
+        repeat_of = previous.id if previous is not None else None
+        repeat_done_count = await tasks.done_count(previous.id) if previous is not None else 0
 
         juz, surah_names = await MushafRepo(session).range_summary(pages.start, pages.end)
         subscriber_count = await SubscriberRepo(session).count_active(chat_id)
@@ -102,6 +114,7 @@ async def send_wird(
             juz=juz,
             surah_names=surah_names,
             is_repeat=repeat_of is not None,
+            repeat_done_count=repeat_done_count,
             subscriber_count=subscriber_count,
         )
         media = MediaRepo(session)
@@ -181,6 +194,9 @@ async def build_view(session: AsyncSession, task: DailyTask) -> WirdView:
 
     done_ids = await tasks.done_user_ids(task.id)
     by_id = {s.user_id: s.display_name for s in await subs.list_active(task.chat_id)}
+    repeat_done_count = (
+        await tasks.done_count(task.is_repeat_of) if task.is_repeat_of is not None else 0
+    )
 
     return WirdView(
         task_id=task.id,
@@ -189,6 +205,7 @@ async def build_view(session: AsyncSession, task: DailyTask) -> WirdView:
         juz=juz,
         surah_names=surah_names,
         is_repeat=task.is_repeat_of is not None,
+        repeat_done_count=repeat_done_count,
         done_names=[by_id.get(uid, "ضيف") for uid in done_ids],
         subscriber_count=len(by_id),
     )
