@@ -21,6 +21,7 @@ from ..deps import DEPS_KEY, Deps
 from .close_day import CLOSE_JOB, job_close_day
 from .remind import REMIND_JOB, schedule_task_reminders
 from .send_daily import job_send_daily
+from .weekly_report import WEEKLY_JOB, job_weekly_report, report_time
 
 log = logging.getLogger(__name__)
 
@@ -42,7 +43,7 @@ def job_name(kind: str, chat_id: int) -> str:
 
 
 def clear_group_jobs(job_queue: JobQueue, chat_id: int) -> None:
-    for kind in (SEND_JOB, CLOSE_JOB):
+    for kind in (SEND_JOB, CLOSE_JOB, WEEKLY_JOB):
         for job in job_queue.jobs(pattern=f"^{kind}:{chat_id}$"):
             job.schedule_removal()
     # Reminder job names carry the task id and sequence too.
@@ -86,6 +87,15 @@ def schedule_group(job_queue: JobQueue, group: Group) -> None:
         chat_id=group.chat_id,
         name=job_name(CLOSE_JOB, group.chat_id),
     )
+    if group.weekly_report_enabled:
+        job_queue.run_daily(
+            job_weekly_report,
+            time=report_time(group),
+            days=to_ptb_weekdays([group.weekly_report_weekday]),
+            chat_id=group.chat_id,
+            name=job_name(WEEKLY_JOB, group.chat_id),
+        )
+
     log.info(
         "chat %s: wird scheduled at %s %s on weekdays %s, closing at %s",
         group.chat_id,

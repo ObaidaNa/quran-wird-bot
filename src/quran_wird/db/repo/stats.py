@@ -50,12 +50,21 @@ class StatsRepo:
         stats.current_streak = 0
         return stats
 
-    async def leaderboard(self, chat_id: int, *, limit: int = 10) -> Sequence[UserStats]:
+    async def leaderboard(
+        self, chat_id: int, *, limit: int = 10, user_ids: Sequence[int] | None = None
+    ) -> Sequence[UserStats]:
+        """The standings, best current streak first.
+
+        `user_ids` narrows the query rather than the result: filtering after the
+        limit would let one departed member with a long streak empty the board.
+        """
+        stmt = select(UserStats).where(UserStats.chat_id == chat_id)
+        if user_ids is not None:
+            if not user_ids:
+                return []
+            stmt = stmt.where(UserStats.user_id.in_(user_ids))
         result = await self.session.scalars(
-            select(UserStats)
-            .where(UserStats.chat_id == chat_id)
-            .order_by(desc(UserStats.current_streak), desc(UserStats.total_done))
-            .limit(limit)
+            stmt.order_by(desc(UserStats.current_streak), desc(UserStats.total_done)).limit(limit)
         )
         return result.all()
 

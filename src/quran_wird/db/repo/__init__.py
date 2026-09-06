@@ -3,11 +3,13 @@
 from .groups import GroupRepo
 from .media import MediaRepo
 from .mushaf import MushafRepo
+from .reports import BadgeRepo, WeeklyReportRepo
 from .stats import StatsRepo
 from .subscribers import NudgeRepo, SubscriberRepo
 from .tasks import TaskRepo
 
 __all__ = [
+    "BadgeRepo",
     "GroupRepo",
     "MediaRepo",
     "MushafRepo",
@@ -15,4 +17,5 @@ __all__ = [
     "StatsRepo",
     "SubscriberRepo",
     "TaskRepo",
+    "WeeklyReportRepo",
 ]
