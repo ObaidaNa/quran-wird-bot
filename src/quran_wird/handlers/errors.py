@@ -5,12 +5,11 @@ from __future__ import annotations
 import logging
 
 from telegram import Update
-from telegram.error import Forbidden, TelegramError
+from telegram.error import TelegramError
 
-from ..db.repo import GroupRepo
-from ..db.session import session_scope
 from ..deps import get_deps
 from ..messages import ar
+from ..tg.failures import deactivate_if_forbidden
 
 log = logging.getLogger(__name__)
 
@@ -26,13 +25,9 @@ async def on_error(update: object, context) -> None:
     if chat is None:
         return
 
-    # Forbidden means the bot was blocked, kicked, or the group was deleted.
-    # Replying is impossible, so deactivate the group instead of retrying forever.
-    if isinstance(error, Forbidden):
-        deps = get_deps(context)
-        async with session_scope(deps.sessions) as session:
-            await GroupRepo(session).set_active(chat.id, False)
-        log.warning("forbidden in chat %s; group deactivated", chat.id)
+    # Replying to a chat that has blocked or removed the bot is impossible, so
+    # the group is deactivated instead of retried forever.
+    if error is not None and await deactivate_if_forbidden(get_deps(context), chat.id, error):
         return
 
     message = update.effective_message

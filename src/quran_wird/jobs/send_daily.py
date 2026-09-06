@@ -21,6 +21,7 @@ from ..domain.progress import next_range
 from ..domain.schemas import PageRange, WirdView
 from ..messages import render
 from ..messages.phrases import phrases
+from ..tg.failures import deactivate_if_forbidden
 from ..tg.media import PageImageMissing, send_pages
 
 log = logging.getLogger(__name__)
@@ -152,8 +153,11 @@ async def job_send_daily(context: ContextTypes.DEFAULT_TYPE) -> None:
     deps = get_deps(context)
     try:
         task_id = await send_wird(context.bot, deps, chat_id)
-    except (TelegramError, PageImageMissing):
-        log.exception("chat %s: daily wird failed", chat_id)
+    except (TelegramError, PageImageMissing) as exc:
+        # A group that removed the bot would otherwise be retried every morning
+        # for as long as the bot runs.
+        if not await deactivate_if_forbidden(deps, chat_id, exc):
+            log.exception("chat %s: daily wird failed", chat_id)
         return
 
     if task_id is not None and context.job_queue is not None:

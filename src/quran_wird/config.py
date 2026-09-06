@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import datetime as dt
 from pathlib import Path
 
 from pydantic import Field, field_validator
@@ -21,6 +22,14 @@ class Settings(BaseSettings):
     default_timezone: str = "Asia/Damascus"
     log_level: str = "INFO"
 
+    # --- backups ---
+    # The whole khatmah is one small SQLite file, so a nightly copy is cheap
+    # insurance. 03:30 sits between the last reminder and the first send.
+    backup_enabled: bool = True
+    backup_dir: Path = Path("data/backups")
+    backup_keep: int = 7
+    backup_time: dt.time = dt.time(3, 30)
+
     # PTB defaults to a 5s connect timeout, which is not enough on a slow or
     # filtered link to api.telegram.org (measured ~10s from Syria).
     connect_timeout: float = 30.0
@@ -32,7 +41,7 @@ class Settings(BaseSettings):
     port: int = 8443
     url_path: str = ""
 
-    @field_validator("db_path", "pages_dir")
+    @field_validator("db_path", "pages_dir", "backup_dir")
     @classmethod
     def _absolutise(cls, v: Path) -> Path:
         return v if v.is_absolute() else PROJECT_ROOT / v

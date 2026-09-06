@@ -1,0 +1,16 @@
+# The build context is sent to the daemon before the first COPY runs, so the
+# heavy directories are excluded here even though the Dockerfile never copies
+# them: assets/pages alone is ~106 MB, and .venv is rebuilt inside the image.
+.venv/
+data/
+assets/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+.git/
+.env
+tests/
+docs/
+deploy/
+scripts/

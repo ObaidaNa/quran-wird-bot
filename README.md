@@ -59,10 +59,124 @@ long polling.**
 | `LOG_LEVEL` | — | `INFO` | مستوى السجلّات |
 | `CONNECT_TIMEOUT` | — | `30` | مهلة الاتصال بالثواني — ارفعها إن كان الوصول إلى تيليجرام بطيئًا |
 | `READ_TIMEOUT` | — | `30` | مهلة القراءة بالثواني |
+| `BACKUP_ENABLED` | — | `true` | نسخة احتياطية ليلية من قاعدة البيانات |
+| `BACKUP_DIR` | — | `data/backups` | مجلد النسخ الاحتياطية |
+| `BACKUP_KEEP` | — | `7` | كم نسخة تُحفظ قبل حذف الأقدم |
+| `BACKUP_TIME` | — | `03:30` | موعد النسخ بـ `DEFAULT_TIMEZONE` |
 | `WEBHOOK_URL` | — | *(فارغ)* | **مفتاح التبديل** — العنوان العام، مثل `https://bot.example.com` |
 | `SECRET_TOKEN` | webhook | — | يتحقّق منه تيليجرام عبر `X-Telegram-Bot-Api-Secret-Token` |
 | `PORT` | webhook | `8443` | منفذ الاستماع المحلي |
 | `URL_PATH` | webhook | *(التوكن)* | مسار الـ endpoint |
+
+## النشر على خادم
+
+الوضع المعتمد: **VPS مع وحدة `systemd`**. البوت يعمل بالـ long polling افتراضيًا،
+فلا يحتاج عنوانًا عامًّا ولا شهادة ولا منفذًا مفتوحًا.
+
+### 1. تجهيز الخادم
+
+```bash
+sudo useradd --system --create-home --home-dir /opt/quran-wird quranwird
+sudo -u quranwird git clone <repo> /opt/quran-wird
+cd /opt/quran-wird
+sudo -u quranwird uv sync --frozen
+```
+
+### 2. الإعدادات وصور المصحف
+
+```bash
+sudo -u quranwird cp .env.example .env
+sudo -u quranwird nano .env          # ضع BOT_TOKEN
+sudo chmod 600 .env                  # التوكن سرّ
+
+sudo -u quranwird uv run scripts/build_index.py
+sudo -u quranwird uv run scripts/build_pages.py
+```
+
+بناء الصور يحتاج `librsvg` و `ImageMagick`، ويأخذ بضع دقائق مرّة واحدة. وإن كانت
+الصور مبنيّة على جهازك فانقلها بدل بنائها من جديد:
+
+```bash
+rsync -a assets/pages/ quranwird@server:/opt/quran-wird/assets/pages/
+```
+
+### 3. تشغيل الخدمة
+
+```bash
+sudo cp deploy/quran-wird.service /etc/systemd/system/
+sudo systemctl daemon-reload
+sudo systemctl enable --now quran-wird
+```
+
+`Restart=always` مع `StartLimitIntervalSec=0`: البوت **لا يحتفظ بحالة في
+الذاكرة** — كل المهام تُعاد بناؤها من قاعدة البيانات عند الإقلاع، وكل ما لا يجوز
+تكراره محروس بصفّ في قاعدة البيانات (الورد المُرسل، التذكير المُسجَّل، اليوم
+المُغلَق، التقرير الأسبوعي). لذلك إعادة التشغيل آمنة دائمًا، وانقطاع تيليجرام
+ساعاتٍ لا يجوز أن يترك البوت متوقّفًا بعد عودته.
+
+### المتابعة
+
+```bash
+sudo systemctl status quran-wird
+sudo journalctl -u quran-wird -f            # السجلّ الحيّ
+sudo journalctl -u quran-wird --since today
+```
+
+عند الإقلاع يسجّل البوت سطرًا لكل مجموعة بمواعيدها، فسطر واحد يكشف أن الجدولة
+أُعيد بناؤها كما ينبغي.
+
+### التحديث
+
+```bash
+cd /opt/quran-wird
+sudo -u quranwird git pull
+sudo -u quranwird uv sync --frozen
+sudo -u quranwird uv run scripts/backup.py    # نسخة قبل الهجرة
+sudo systemctl restart quran-wird             # الهجرات تعمل تلقائيًا عند الإقلاع
+```
+
+### النسخ الاحتياطي والاستعادة
+
+البوت ينسخ قاعدته كل ليلة في `BACKUP_TIME` بواجهة SQLite للنسخ الحيّ (لا `cp`،
+فهي قد تلتقط كتابة نصف مكتملة)، ويحتفظ بآخر `BACKUP_KEEP` نسخة.
+
+```bash
+uv run scripts/backup.py            # نسخة الآن
+uv run scripts/backup.py --list     # ما هو موجود
+uv run scripts/backup.py /mnt/usb   # إلى مكان آخر
+```
+
+الاستعادة نسخُ ملف مكان الملف:
+
+```bash
+sudo systemctl stop quran-wird
+sudo -u quranwird cp data/backups/bot-20260906-033000.db data/bot.db
+sudo systemctl start quran-wird
+```
+
+الملف كلّه بضع مئات من الكيلوبايتات، فانسخه إلى خارج الخادم من حين لآخر — فيه
+تقدّم كل مجموعة وسلاسل كل عضو، وهو وحده ما لا يمكن إعادة بنائه.
+
+### وضع الـ webhook (اختياري)
+
+اضبط `WEBHOOK_URL` فيتحوّل البوت تلقائيًا. يحتاج عندها عكس وكيل (nginx أو Caddy)
+بشهادة TLS يمرّر إلى `PORT`، مع `SECRET_TOKEN` ليتحقّق البوت أن الطلب من تيليجرام.
+الـ long polling يكفي لمجموعات بالعشرات، ولا يحتاج شيئًا من هذا.
+
+### Docker (اختياري)
+
+```bash
+docker build -t quran-wird .
+docker run -d --name quran-wird --restart unless-stopped \
+  --env-file .env \
+  -v "$PWD/data:/app/data" \
+  -v "$PWD/assets/pages:/app/assets/pages:ro" \
+  quran-wird
+```
+
+صور الصفحات لا تُبنى داخل الصورة (‏604 صورة ‎~106 MB‏) بل تُركَّب من الخارج.
+
+---
 
 ## التطوير
 
@@ -93,7 +207,11 @@ src/quran_wird/
 ├── messages/       كل النصوص العربية ومجمّعات العبارات
 ├── handlers/       أوامر تيليجرام وأزراره
 ├── jobs/           المهام المجدولة: الإرسال، التذكير، إغلاق اليوم، التقرير الأسبوعي
-└── tg/             مساعدات المنشن والوسائط وكاش file_id
+└── tg/             مساعدات المنشن والوسائط وكاش file_id، والتصرّف عند الطرد
+
+deploy/quran-wird.service   وحدة systemd
+scripts/backup.py           نسخة احتياطية يدوية
+Dockerfile                  بديل اختياري للنشر
 ```
 
 `domain/` لا يستورد `telegram` إطلاقًا — لذلك يُختبر كلّه بلا شبكة.

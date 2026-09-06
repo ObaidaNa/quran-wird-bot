@@ -17,6 +17,7 @@ from .handlers import errors, lifecycle, mark_done, stats, subscribe, wird
 # Aliased: `settings` is also the name of the Settings object every function
 # here takes, and the parameter would shadow the module.
 from .handlers import settings as settings_panel
+from .jobs.backup import schedule_backup
 from .jobs.scheduler import reschedule_all
 from .messages import ar
 
@@ -34,6 +35,8 @@ async def _post_init(app: Application) -> None:
     # Jobs are in-memory only, so they have to be rebuilt from the database on
     # every start.
     await reschedule_all(app)
+    if app.job_queue is not None:
+        schedule_backup(app.job_queue, app.bot_data[DEPS_KEY].settings)
 
 
 async def _post_shutdown(app: Application) -> None:

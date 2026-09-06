@@ -14,7 +14,7 @@ from zoneinfo import ZoneInfo
 
 from sqlalchemy.ext.asyncio import AsyncSession
 from telegram import Bot
-from telegram.error import TelegramError
+from telegram.error import Forbidden, TelegramError
 from telegram.ext import ContextTypes
 
 from ..db.models import BadgeKind, Group
@@ -31,6 +31,7 @@ from ..deps import Deps, get_deps
 from ..domain.schemas import MemberProgress
 from ..domain.weekly import WeekMember, WeekTask, summarise, week_bounds, weeks_to_finish
 from ..messages import stats_view as view
+from ..tg.failures import deactivate_if_forbidden
 from .send_daily import local_today
 
 log = logging.getLogger(__name__)
@@ -133,6 +134,10 @@ async def send_weekly_report(
 
     try:
         message = await bot.send_message(chat_id, text)
+    except Forbidden:
+        # Left to the caller: the group has removed the bot, and no future
+        # report will land either.
+        raise
     except TelegramError:
         log.exception("chat %s: the weekly report could not be sent", chat_id)
         return False
@@ -161,7 +166,9 @@ def report_time(group: Group) -> dt.time:
 async def job_weekly_report(context: ContextTypes.DEFAULT_TYPE) -> None:
     """JobQueue entry point, one per group."""
     chat_id = context.job.chat_id
+    deps = get_deps(context)
     try:
-        await send_weekly_report(context.bot, get_deps(context), chat_id)
-    except TelegramError:
-        log.exception("chat %s: the weekly report job failed", chat_id)
+        await send_weekly_report(context.bot, deps, chat_id)
+    except TelegramError as exc:
+        if not await deactivate_if_forbidden(deps, chat_id, exc):
+            log.exception("chat %s: the weekly report job failed", chat_id)

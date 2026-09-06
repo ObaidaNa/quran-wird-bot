@@ -1,0 +1,67 @@
+; systemd unit for the وِرْدُنا bot.
+;
+; Install:
+;   sudo cp deploy/quran-wird.service /etc/systemd/system/
+;   sudo systemctl daemon-reload
+;   sudo systemctl enable --now quran-wird
+;
+; Adjust User, WorkingDirectory and the ExecStart path to match the server.
+
+[Unit]
+Description=Wirduna - Quran daily wird Telegram bot
+Documentation=https://t.me/WirdunaBot
+; Telegram is unreachable before the network is up, and the bot's first act is
+; getMe. Waiting saves a restart loop at every boot.
+After=network-online.target
+Wants=network-online.target
+; Allow endless restarts: a Telegram outage lasting hours must not leave the
+; bot stopped once it ends. (This key belongs to [Unit], not [Service].)
+StartLimitIntervalSec=0
+
+[Service]
+Type=simple
+User=quranwird
+Group=quranwird
+WorkingDirectory=/opt/quran-wird
+
+; The virtualenv's own python, not `uv run`: uv would want a writable cache
+; under ProtectSystem=strict, and the service needs nothing uv provides at
+; runtime. Build the venv at deploy time with `uv sync --frozen`.
+; The token stays in .env, read by pydantic-settings — never in this unit file,
+; which is world-readable.
+ExecStart=/opt/quran-wird/.venv/bin/python -m quran_wird
+
+; The bot is stateless in memory: every job is rebuilt from the database on
+; start, and anything that must not fire twice is guarded by a database row.
+; Restarting is therefore always safe, and always the right answer.
+Restart=always
+RestartSec=10s
+
+; Give in-flight Telegram calls a moment to finish before SIGKILL.
+TimeoutStopSec=30
+KillSignal=SIGINT
+
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=quran-wird
+
+; --- hardening ---
+; The bot needs the network, its own directory, and nothing else.
+NoNewPrivileges=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectSystem=strict
+ProtectHome=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictNamespaces=true
+RestrictSUIDSGID=true
+LockPersonality=true
+MemoryDenyWriteExecute=false
+; The only thing the bot writes is its database and the backups beside it.
+ReadWritePaths=/opt/quran-wird/data
+Environment=PYTHONUNBUFFERED=1
+
+[Install]
+WantedBy=multi-user.target

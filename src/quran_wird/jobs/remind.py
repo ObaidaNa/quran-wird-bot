@@ -7,7 +7,7 @@ import logging
 from zoneinfo import ZoneInfo
 
 from telegram import Bot
-from telegram.error import TelegramError
+from telegram.error import Forbidden, TelegramError
 from telegram.ext import ContextTypes, JobQueue
 
 from ..db.models import DailyTask, Group, TaskStatus
@@ -15,6 +15,7 @@ from ..db.repo import GroupRepo, StatsRepo, SubscriberRepo, TaskRepo
 from ..db.session import session_scope
 from ..deps import Deps, get_deps
 from ..messages import render
+from ..tg.failures import deactivate_if_forbidden
 from ..tg.mentions import chunked
 
 log = logging.getLogger(__name__)
@@ -130,6 +131,10 @@ async def send_reminder(bot: Bot, deps: Deps, chat_id: int, task_id: int, seq: i
         try:
             message = await bot.send_message(chat_id, text)
             message_ids.append(message.message_id)
+        except Forbidden:
+            # The bot is no longer in the group; the caller deactivates it
+            # rather than sending the remaining batches into a closed door.
+            raise
         except TelegramError:
             log.exception("chat %s: a reminder message failed", chat_id)
 
@@ -140,9 +145,9 @@ async def send_reminder(bot: Bot, deps: Deps, chat_id: int, task_id: int, seq: i
 async def job_remind(context: ContextTypes.DEFAULT_TYPE) -> None:
     job = context.job
     data = job.data or {}
+    deps = get_deps(context)
     try:
-        await send_reminder(
-            context.bot, get_deps(context), job.chat_id, data["task_id"], data["seq"]
-        )
-    except TelegramError:
-        log.exception("chat %s: reminder job failed", job.chat_id)
+        await send_reminder(context.bot, deps, job.chat_id, data["task_id"], data["seq"])
+    except TelegramError as exc:
+        if not await deactivate_if_forbidden(deps, job.chat_id, exc):
+            log.exception("chat %s: reminder job failed", job.chat_id)

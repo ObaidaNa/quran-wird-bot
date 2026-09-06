@@ -15,7 +15,7 @@ import datetime as dt
 import logging
 
 from telegram import Bot
-from telegram.error import TelegramError
+from telegram.error import Forbidden, TelegramError
 from telegram.ext import ContextTypes
 
 from ..db.models import Group
@@ -26,6 +26,7 @@ from ..domain.progress import advance_from, next_range, should_advance
 from ..domain.schemas import DaySummaryView, PageRange
 from ..messages import render
 from ..messages.phrases import KHATMAH_DONE, KHATMAH_DUA
+from ..tg.failures import deactivate_if_forbidden
 
 log = logging.getLogger(__name__)
 
@@ -129,11 +130,17 @@ async def close_day(bot: Bot, deps: Deps, chat_id: int) -> int | None:
 async def _announce(bot: Bot, chat_id: int, summary: str, khatmah_message: str | None) -> None:
     """Post the day's summary, and the khatmah announcement when there is one.
 
-    A failed message must not undo a closed day, so every send is caught: the
-    database is already correct, and the group simply misses one report.
+    A failed message must not undo a closed day, so sends are caught: the
+    database is already correct and the group simply misses one report.
+
+    Forbidden is the exception, and is deliberately let through — it means the
+    bot is no longer in the group, which the caller has to act on rather than
+    log nightly forever.
     """
     try:
         await bot.send_message(chat_id, summary)
+    except Forbidden:
+        raise
     except TelegramError:
         log.exception("chat %s: could not post the daily summary", chat_id)
 
@@ -145,6 +152,8 @@ async def _announce(bot: Bot, chat_id: int, summary: str, khatmah_message: str |
         # The dua carries tashkeel and hard line breaks that HTML parsing would
         # damage, so it goes out unparsed and in a message of its own.
         await bot.send_message(chat_id, KHATMAH_DUA, parse_mode=None)
+    except Forbidden:
+        raise
     except TelegramError:
         log.exception("chat %s: could not post the khatmah announcement", chat_id)
 
@@ -152,7 +161,9 @@ async def _announce(bot: Bot, chat_id: int, summary: str, khatmah_message: str |
 async def job_close_day(context: ContextTypes.DEFAULT_TYPE) -> None:
     """JobQueue entry point, one per group."""
     chat_id = context.job.chat_id
+    deps = get_deps(context)
     try:
-        await close_day(context.bot, get_deps(context), chat_id)
-    except TelegramError:
-        log.exception("chat %s: closing the day failed", chat_id)
+        await close_day(context.bot, deps, chat_id)
+    except TelegramError as exc:
+        if not await deactivate_if_forbidden(deps, chat_id, exc):
+            log.exception("chat %s: closing the day failed", chat_id)
