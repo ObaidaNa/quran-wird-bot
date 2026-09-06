@@ -69,6 +69,7 @@ def build_application(settings: Settings) -> Application:
     subscribe.register(app)
     wird.register(app)
     mark_done.register(app)
+    settings.register(app)
     app.add_error_handler(errors.on_error)
     return app
 
