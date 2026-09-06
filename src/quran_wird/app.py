@@ -12,19 +12,24 @@ from telegram.ext import AIORateLimiter, Application, ApplicationBuilder, Defaul
 from .config import Settings
 from .db.session import create_engine_async, session_factory
 from .deps import DEPS_KEY, Deps
-from .handlers import errors, lifecycle, subscribe
+from .handlers import errors, lifecycle, subscribe, wird
+from .jobs.scheduler import reschedule_all
 from .messages import ar
 
 log = logging.getLogger(__name__)
 
 
 async def _post_init(app: Application) -> None:
-    """Publish the command menu once the bot is connected."""
+    """Publish the command menu and rebuild every group's jobs."""
     await app.bot.set_my_commands(
         [BotCommand(name, description) for name, description in ar.COMMAND_DESCRIPTIONS]
     )
     me = await app.bot.get_me()
     log.info("connected as @%s (%s)", me.username, me.id)
+
+    # Jobs are in-memory only, so they have to be rebuilt from the database on
+    # every start.
+    await reschedule_all(app)
 
 
 async def _post_shutdown(app: Application) -> None:
@@ -57,6 +62,7 @@ def build_application(settings: Settings) -> Application:
 
     lifecycle.register(app)
     subscribe.register(app)
+    wird.register(app)
     app.add_error_handler(errors.on_error)
     return app
 
