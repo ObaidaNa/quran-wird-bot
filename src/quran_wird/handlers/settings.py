@@ -174,6 +174,10 @@ async def apply(deps: Deps, chat_id: int, data: str) -> Screen | None:
                 await SubscriberRepo(session).unsubscribe(chat_id, int(user_id))
                 where = SUBSCRIBERS_SCREEN
 
+            case ["pin"]:
+                patch = _patch(group, "pin_wird", not group.pin_wird)
+                where = "send"
+
             case ["we"]:
                 group.weekly_report_enabled = not group.weekly_report_enabled
                 where = "weekly"

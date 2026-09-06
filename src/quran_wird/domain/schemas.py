@@ -43,6 +43,7 @@ class GroupSettingsPatch(BaseModel):
     pages_per_day: Annotated[int, Field(ge=1, le=20)] | None = None
     active_weekdays: list[Weekday] | None = None
     send_time: dt.time | None = None
+    pin_wird: bool | None = None
 
     first_reminder_after_hours: Annotated[int, Field(ge=1, le=23)] | None = None
     reminder_interval_hours: Annotated[int, Field(ge=1, le=12)] | None = None
@@ -95,6 +96,7 @@ class GroupSettingsView(ORMModel):
     pages_per_day: int
     active_weekdays: list[int]
     send_time: dt.time
+    pin_wird: bool
     first_reminder_after_hours: int
     reminder_interval_hours: int
     reminder_max_count: int

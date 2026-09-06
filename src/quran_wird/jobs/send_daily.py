@@ -23,6 +23,7 @@ from ..messages import render
 from ..messages.phrases import phrases
 from ..tg.failures import deactivate_if_forbidden
 from ..tg.media import PageImageMissing, send_pages
+from ..tg.pinning import pin
 
 log = logging.getLogger(__name__)
 
@@ -142,6 +143,13 @@ async def send_wird(
             task.id, message_id=message.message_id, album_message_ids=album_ids
         )
         task_id = task.id
+        pin_wanted = group.pin_wird
+        wird_message_id = message.message_id
+
+    # Pinned after the transaction commits: a missing pin permission must not
+    # roll back a wird the group has already received.
+    if pin_wanted:
+        await pin(bot, chat_id, wird_message_id)
 
     log.info("chat %s: sent pages %s-%s (task %s)", chat_id, pages.start, pages.end, task_id)
     return task_id

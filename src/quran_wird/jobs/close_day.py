@@ -27,6 +27,7 @@ from ..domain.schemas import DaySummaryView, PageRange
 from ..messages import render
 from ..messages.phrases import KHATMAH_DONE, KHATMAH_DUA
 from ..tg.failures import deactivate_if_forbidden
+from ..tg.pinning import unpin
 
 log = logging.getLogger(__name__)
 
@@ -115,6 +116,12 @@ async def close_day(bot: Bot, deps: Deps, chat_id: int) -> int | None:
         )
         task_id = task.id
         pages_advanced_to = group.current_page
+        pinned_message_id = task.message_id if group.pin_wird else None
+
+    # The day is over, so the wird comes down; otherwise the group's pin list
+    # fills up with the wirds of every day the bot has run.
+    if pinned_message_id is not None:
+        await unpin(bot, chat_id, pinned_message_id)
 
     await _announce(bot, chat_id, summary, khatmah_message)
 

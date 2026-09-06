@@ -6,13 +6,16 @@ import logging
 
 from telegram import Chat, ChatMemberUpdated, Update
 from telegram.constants import ChatMemberStatus
+from telegram.error import TelegramError
 from telegram.ext import Application, ChatMemberHandler, CommandHandler, ContextTypes
 
 from ..db.repo import GroupRepo, SubscriberRepo
 from ..db.session import session_scope
 from ..deps import get_deps
 from ..jobs.scheduler import reschedule_chat
+from ..jobs.send_daily import schedule_reminders_for, send_wird
 from ..messages import ar
+from ..tg.media import PageImageMissing
 
 log = logging.getLogger(__name__)
 
@@ -69,6 +72,35 @@ async def on_my_chat_member(update: Update, context: ContextTypes.DEFAULT_TYPE) 
 
     await context.bot.send_message(chat.id, ar.ADDED_TO_GROUP)
     log.info("added to chat %s (%s), new=%s", chat.id, chat.title, created)
+
+    await send_first_wird(context, chat.id)
+
+
+async def send_first_wird(context: ContextTypes.DEFAULT_TYPE, chat_id: int) -> int | None:
+    """Send a wird straight away, on the day the bot joins.
+
+    Without this a group that adds the bot at ten in the morning sees nothing at
+    all until five the next morning, which reads as a bot that does not work
+    rather than one that is waiting for its hour.
+
+    `force` skips the active-weekday check on purpose: someone just added the
+    bot, so today is the day they want to see it. The same-day guard inside
+    send_wird still applies, so a bot removed and re-added does not post twice.
+    """
+    deps = get_deps(context)
+    try:
+        task_id = await send_wird(context.bot, deps, chat_id, force=True)
+    except PageImageMissing:
+        await context.bot.send_message(chat_id, ar.PAGES_MISSING)
+        log.warning("chat %s: page images missing; no first wird sent", chat_id)
+        return None
+    except TelegramError:
+        log.exception("chat %s: the first wird could not be sent", chat_id)
+        return None
+
+    if task_id is not None and context.job_queue is not None:
+        await schedule_reminders_for(deps, context.job_queue, chat_id, task_id)
+    return task_id
 
 
 async def on_chat_member(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:

@@ -1,4 +1,4 @@
-; systemd unit for the وِرْدُنا bot.
+; systemd unit for the Quran wird bot.
 ;
 ; Install:
 ;   sudo cp deploy/quran-wird.service /etc/systemd/system/
@@ -8,8 +8,7 @@
 ; Adjust User, WorkingDirectory and the ExecStart path to match the server.
 
 [Unit]
-Description=Wirduna - Quran daily wird Telegram bot
-Documentation=https://t.me/WirdunaBot
+Description=Quran daily wird Telegram bot
 ; Telegram is unreachable before the network is up, and the bot's first act is
 ; getMe. Waiting saves a restart loop at every boot.
 After=network-online.target

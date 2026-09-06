@@ -35,6 +35,8 @@ class FakeBot:
         self.photos: list[dict] = []
         self.messages: list[FakeMessage] = []
         self.edits: list[dict] = []
+        self.pinned: list[int] = []
+        self.unpinned: list[int] = []
         self.fail_on_file_id = fail_on_file_id
         self.edit_error = edit_error
         self._next_id = 1000
@@ -65,6 +67,14 @@ class FakeBot:
         msg = FakeMessage(self._id(), text=text, reply_markup=reply_markup, kwargs=dict(kw))
         self.messages.append(msg)
         return msg
+
+    async def pin_chat_message(self, chat_id, message_id, **kw):
+        self.pinned.append(message_id)
+        return True
+
+    async def unpin_chat_message(self, chat_id, message_id=None, **kw):
+        self.unpinned.append(message_id)
+        return True
 
     async def edit_message_text(self, chat_id, message_id, text, reply_markup=None, **kw):
         if self.edit_error:

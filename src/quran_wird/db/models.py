@@ -77,6 +77,9 @@ class Group(Base):
         JSON, default=lambda: [0, 1, 2, 3, 4, 5, 6]
     )  # 0=Monday … 6=Sunday, matching date.weekday()
     send_time: Mapped[dt.time] = mapped_column(Time, default=dt.time(5, 0))
+    # Pinning keeps the wird at the top of the group all day; it is unpinned
+    # when the day closes. Off for groups that keep something else pinned.
+    pin_wird: Mapped[bool] = mapped_column(Boolean, default=True)
 
     # --- reminders ---
     first_reminder_after_hours: Mapped[int] = mapped_column(default=8)

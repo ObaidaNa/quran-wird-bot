@@ -33,7 +33,8 @@ from quran_wird.jobs.send_daily import send_wird
 from quran_wird.jobs.weekly_report import WEEKLY_JOB
 
 CHAT = -1001234567890
-BOT = User(id=8200091843, first_name="وِرْدُنا", is_bot=True)
+TODAY = dt.date.today()
+BOT = User(id=1234567, first_name="بوت الورد", is_bot=True)
 ADMIN = User(id=555, first_name="مشرف", is_bot=False)
 
 
@@ -168,6 +169,69 @@ class TestFirstRun:
         assert queue.names(f"{WEEKLY_JOB}:") == [f"{WEEKLY_JOB}:{CHAT}"]
         assert "أنا بوت" in bot.messages[0].text
 
+    async def test_the_first_wird_arrives_at_once(self, session, deps, index):
+        """A group that adds the bot at ten in the morning must not wait until
+        five the next morning to see anything happen."""
+        queue = StubQueue()
+        bot = FakeBot()
+        update = Update(update_id=1, my_chat_member=membership_update(group_chat(), joining=True))
+
+        await on_my_chat_member(update, StubContext(bot, deps, queue))
+
+        task = await TaskRepo(session).get_open(CHAT)
+        assert task is not None and (task.page_start, task.page_end) == (1, 2)
+        assert len(bot.albums[0]) == 2
+        # Welcome first, then the wird beneath it.
+        assert "أنا بوت" in bot.messages[0].text
+        assert "ورد اليوم" in bot.messages[1].text
+        # And that wird's reminders are queued, exactly as the daily job would.
+        assert queue.names("remind:")
+
+    async def test_the_first_wird_is_pinned(self, session, deps, index):
+        bot = FakeBot()
+        await on_my_chat_member(
+            Update(update_id=1, my_chat_member=membership_update(group_chat(), joining=True)),
+            StubContext(bot, deps, StubQueue()),
+        )
+        task = await TaskRepo(session).get_open(CHAT)
+        assert bot.pinned == [task.message_id]
+
+    async def test_re_adding_the_same_day_does_not_post_twice(self, session, deps, index):
+        queue = StubQueue()
+        chat = group_chat()
+        context = StubContext(FakeBot(), deps, queue)
+        await on_my_chat_member(
+            Update(update_id=1, my_chat_member=membership_update(chat, joining=True)), context
+        )
+        await on_my_chat_member(
+            Update(update_id=2, my_chat_member=membership_update(chat, joining=False)), context
+        )
+
+        second = FakeBot()
+        await on_my_chat_member(
+            Update(update_id=3, my_chat_member=membership_update(chat, joining=True)),
+            StubContext(second, deps, queue),
+        )
+
+        # The welcome is repeated; the wird is not.
+        assert len(second.albums) == 0
+        assert len(await TaskRepo(session).list_between(CHAT, TODAY, TODAY)) == 1
+
+    async def test_missing_page_images_are_reported_not_swallowed(
+        self, session, deps, index, pages_dir
+    ):
+        for image in pages_dir.glob("*.png"):
+            image.unlink()
+
+        bot = FakeBot()
+        await on_my_chat_member(
+            Update(update_id=1, my_chat_member=membership_update(group_chat(), joining=True)),
+            StubContext(bot, deps, StubQueue()),
+        )
+
+        # The group is told what its operator has to do, rather than left silent.
+        assert "build_pages" in bot.messages[-1].text
+
     async def test_being_removed_drops_the_jobs(self, session, deps, index):
         queue = StubQueue()
         chat = group_chat()
@@ -267,6 +331,45 @@ class TestDailyCycle:
         task = await TaskRepo(session).get(second)
         assert (task.page_start, task.page_end) == (3, 4)
         assert task.is_repeat_of is None
+
+    async def test_the_wird_is_pinned_for_the_day_then_released(self, session, deps, index):
+        # A pinned wird sits at the top of the group all day; leaving it pinned
+        # would fill the pin list with every day the bot has run.
+        await self._group(session)
+        bot = FakeBot()
+        task_id = await send_wird(bot, deps, CHAT)
+        task = await TaskRepo(session).get(task_id)
+
+        assert bot.pinned == [task.message_id]
+        assert bot.unpinned == []
+
+        await close_day(bot, deps, CHAT)
+        assert bot.unpinned == [task.message_id]
+
+    async def test_pinning_can_be_switched_off(self, session, deps, index):
+        group = await self._group(session)
+        group.pin_wird = False
+        await session.flush()
+
+        bot = FakeBot()
+        await send_wird(bot, deps, CHAT)
+        await close_day(bot, deps, CHAT)
+
+        assert bot.pinned == [] and bot.unpinned == []
+
+    async def test_a_bot_without_pin_rights_still_sends_the_wird(self, session, deps, index):
+        # Being added without admin rights is common; the wird matters, the pin
+        # does not.
+        from telegram.error import BadRequest
+
+        class NoRights(FakeBot):
+            async def pin_chat_message(self, *a, **kw):
+                raise BadRequest("not enough rights to pin a message")
+
+        await self._group(session)
+        bot = NoRights()
+        assert await send_wird(bot, deps, CHAT) is not None
+        assert len(bot.messages) == 1
 
     async def test_a_day_nobody_reads_repeats_tomorrow(self, session, deps, index):
         group = await self._group(session)
