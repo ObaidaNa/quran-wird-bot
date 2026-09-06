@@ -6,13 +6,14 @@ import datetime as dt
 import logging
 from zoneinfo import ZoneInfo
 
+from sqlalchemy.ext.asyncio import AsyncSession
 from telegram import Bot
 from telegram.error import TelegramError
 from telegram.ext import ContextTypes
 
 from ..content.base import BuildContext
 from ..content.quran_pages import provider as quran_pages
-from ..db.models import Group, TaskStatus
+from ..db.models import DailyTask, Group, TaskStatus
 from ..db.repo import GroupRepo, MediaRepo, MushafRepo, SubscriberRepo, TaskRepo
 from ..db.session import session_scope
 from ..deps import Deps, get_deps
@@ -142,27 +143,35 @@ async def job_send_daily(context: ContextTypes.DEFAULT_TYPE) -> None:
 
 
 async def current_view(deps: Deps, chat_id: int) -> WirdView | None:
-    """Rebuild the view for the open wird, including who has finished."""
+    """The view for the group's currently open wird, if there is one."""
     async with session_scope(deps.sessions) as session:
         task = await TaskRepo(session).get_open(chat_id)
         if task is None or task.status is TaskStatus.CLOSED:
             return None
+        return await build_view(session, task)
 
-        tasks = TaskRepo(session)
-        subs = SubscriberRepo(session)
-        juz, surah_names = await MushafRepo(session).range_summary(task.page_start, task.page_end)
 
-        done_ids = await tasks.done_user_ids(task.id)
-        by_id = {s.user_id: s.display_name for s in await subs.list_active(task.chat_id)}
-        names = [by_id.get(uid, "عضو") for uid in done_ids]
+async def build_view(session: AsyncSession, task: DailyTask) -> WirdView:
+    """Rebuild a wird view from the database, including who has finished.
 
-        return WirdView(
-            task_id=task.id,
-            task_date=task.task_date,
-            pages=PageRange(start=task.page_start, end=task.page_end),
-            juz=juz,
-            surah_names=surah_names,
-            is_repeat=task.is_repeat_of is not None,
-            done_names=names,
-            subscriber_count=len(by_id),
-        )
+    Names come from the subscriber list; someone who pressed the button without
+    subscribing is counted but shown under a generic label, since the bot has no
+    stored name for them.
+    """
+    tasks = TaskRepo(session)
+    subs = SubscriberRepo(session)
+    juz, surah_names = await MushafRepo(session).range_summary(task.page_start, task.page_end)
+
+    done_ids = await tasks.done_user_ids(task.id)
+    by_id = {s.user_id: s.display_name for s in await subs.list_active(task.chat_id)}
+
+    return WirdView(
+        task_id=task.id,
+        task_date=task.task_date,
+        pages=PageRange(start=task.page_start, end=task.page_end),
+        juz=juz,
+        surah_names=surah_names,
+        is_repeat=task.is_repeat_of is not None,
+        done_names=[by_id.get(uid, "ضيف") for uid in done_ids],
+        subscriber_count=len(by_id),
+    )

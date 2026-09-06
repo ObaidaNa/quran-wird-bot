@@ -21,6 +21,11 @@ class Settings(BaseSettings):
     default_timezone: str = "Asia/Damascus"
     log_level: str = "INFO"
 
+    # PTB defaults to a 5s connect timeout, which is not enough on a slow or
+    # filtered link to api.telegram.org (measured ~10s from Syria).
+    connect_timeout: float = 30.0
+    read_timeout: float = 30.0
+
     # Run mode: webhook when webhook_url is set, otherwise long polling.
     webhook_url: str = ""
     secret_token: str = ""

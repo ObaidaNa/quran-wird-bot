@@ -2,6 +2,8 @@
 # Implementation Plan — Quran Daily Wird Telegram Bot
 
 **الحالة:** مسوّدة للمراجعة (v1) — تاريخ الإنشاء: 2026-09-06
+**هوية البوت:** الاسم **وِرْدُنا** · المعرّف [@WirdunaBot](https://t.me/WirdunaBot) · وضع الخصوصية مُفعّل (لا يقرأ رسائل المجموعة، والأوامر والأزرار تكفيه).
+
 **المكدّس التقني:** Python 3.11+ · `python-telegram-bot` v22.x (async) · **SQLAlchemy 2.0 (async ORM)** + **Alembic** + SQLite · **Pydantic v2** للمخطّطات · `uv` · `rsvg-convert` + ImageMagick
 
 ---
@@ -545,7 +547,7 @@ else:
 | **2** | ✅ **تمّت** — طبقة المستودع | `db/repo/`: groups · subscribers · tasks · stats · media · nudges · `domain/progress.py` · 61 اختبارًا جديدًا | 1 يوم |
 | **3** | ✅ **تمّت** — الهيكل الأساسي للبوت | `app.py` + `__main__.py` (تبديل polling/webhook) · `/start` `/help` `/join` `/leave` · `my_chat_member` و `chat_member` · `messages/ar.py` · `tg/guards.py` و `tg/mentions.py` · معالج أخطاء | 1 يوم |
 | **4** | ✅ **تمّت** — إرسال الورد اليومي | `tg/media.py` (ألبوم + كاش file_id + إعادة محاولة) · `jobs/send_daily.py` · `jobs/scheduler.py` · `messages/phrases.py` (العبارات المعتمدة) · `messages/render.py` (أرقام عربية + تواريخ شامية) · `content/` (طبقة التوسّع) · `/today` و `/sendnow` · 51 اختبارًا جديدًا | 1.5 يوم |
-| **5** | تسجيل الإنجاز | `mark_done` · تعديل الرسالة حيًّا · معالجة غير المشتركين | 1 يوم |
+| **5** | ✅ **تمّت** — تسجيل الإنجاز | `handlers/mark_done.py`: زر ✅ و `/done` وزر «من أنجز؟» · تعديل الرسالة حيًّا · تحديث السلاسل · تهنئة الجميع عند الاكتمال · دعوة الضيوف مرة كل أسبوع · 17 اختبارًا | 1 يوم |
 | **6** | التذكيرات والمنشن | `remind` · تقسيم 4/رسالة · ساعات الهدوء · عبارات التقصير | 1.5 يوم |
 | **7** | إغلاق اليوم والتقدّم | `close_day` · قواعد التقدّم · الإحصاءات والسلاسل · الختمة | 1 يوم |
 | **8** | لوحة إعدادات المشرفين | `/settings` inline menu لكل الخيارات · حراسة الصلاحيات | 1.5 يوم |

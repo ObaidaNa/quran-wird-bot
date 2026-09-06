@@ -12,7 +12,7 @@ from telegram.ext import AIORateLimiter, Application, ApplicationBuilder, Defaul
 from .config import Settings
 from .db.session import create_engine_async, session_factory
 from .deps import DEPS_KEY, Deps
-from .handlers import errors, lifecycle, subscribe, wird
+from .handlers import errors, lifecycle, mark_done, subscribe, wird
 from .jobs.scheduler import reschedule_all
 from .messages import ar
 
@@ -54,6 +54,11 @@ def build_application(settings: Settings) -> Application:
         .defaults(defaults)
         # Telegram throttles group messages; the reminder fan-out would trip it.
         .rate_limiter(AIORateLimiter())
+        .connect_timeout(settings.connect_timeout)
+        .read_timeout(settings.read_timeout)
+        .write_timeout(settings.read_timeout)
+        .get_updates_connect_timeout(settings.connect_timeout)
+        .get_updates_read_timeout(settings.read_timeout)
         .post_init(_post_init)
         .post_shutdown(_post_shutdown)
         .build()
@@ -63,6 +68,7 @@ def build_application(settings: Settings) -> Application:
     lifecycle.register(app)
     subscribe.register(app)
     wird.register(app)
+    mark_done.register(app)
     app.add_error_handler(errors.on_error)
     return app
 
