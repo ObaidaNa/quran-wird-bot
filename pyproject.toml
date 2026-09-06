@@ -1,7 +1,7 @@
 [project]
 name = "quran-wird-bot"
 version = "0.1.0"
-description = "بوت تيليجرام للورد اليومي من القرآن الكريم"
+description = "Arabic Telegram bot for a group's daily Quran reading"
 requires-python = ">=3.11"
 dependencies = [
     "python-telegram-bot[job-queue,rate-limiter]>=22.0,<23.0",
@@ -29,7 +29,7 @@ packages = ["src/quran_wird"]
 [tool.ruff]
 line-length = 100
 target-version = "py311"
-# هجرات Alembic مولّدة آليًا — لا تُنسّق يدويًا
+# Alembic migrations are generated; do not hand-format them
 extend-exclude = ["alembic/versions"]
 
 [tool.ruff.lint]

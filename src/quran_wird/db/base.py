@@ -1,12 +1,13 @@
-"""الأساس المشترك لنماذج SQLAlchemy."""
+"""Shared declarative base for the SQLAlchemy models."""
 
 from __future__ import annotations
 
 from sqlalchemy import MetaData
 from sqlalchemy.orm import DeclarativeBase
 
-# تسمية موحّدة للقيود — بدونها تولّد SQLite قيودًا بلا أسماء فيعجز Alembic
-# عن تعديلها لاحقًا (وهذا مهم بوجه خاص لأن SQLite يعيد بناء الجدول عند أي تغيير).
+# Deterministic constraint names. Without them SQLite emits unnamed constraints
+# that Alembic cannot later alter — which matters here because SQLite rebuilds the
+# whole table for any schema change.
 NAMING_CONVENTION = {
     "ix": "ix_%(table_name)s_%(column_0_name)s",
     "uq": "uq_%(table_name)s_%(column_0_name)s",

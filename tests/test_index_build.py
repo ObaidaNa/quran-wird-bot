@@ -1,4 +1,4 @@
-"""اختبارات فهرس المصحف — تُتخطّى إن لم يُبنَ الفهرس بعد."""
+"""Mushaf index tests; skipped when the index has not been built yet."""
 
 from __future__ import annotations
 
@@ -12,7 +12,7 @@ from quran_wird.db.session import create_engine_sync, sync_session_scope
 
 DB = Path(__file__).resolve().parents[1] / "data" / "bot.db"
 
-pytestmark = pytest.mark.skipif(not DB.exists(), reason="شغّل: uv run scripts/build_index.py")
+pytestmark = pytest.mark.skipif(not DB.exists(), reason="run: uv run scripts/build_index.py")
 
 
 @pytest.fixture(scope="module")
@@ -47,7 +47,7 @@ def test_last_page_closes_the_mushaf(session):
 
 
 def test_multi_surah_page_lists_all_names(session):
-    # صفحة 293 تقع على حدّ الإسراء والكهف
+    # Page 293 straddles the al-Isra / al-Kahf boundary
     assert session.get(PageIndex, 293).surah_names == "الإسراء، الكهف"
 
 
@@ -66,7 +66,7 @@ def test_no_empty_ayah_text(session):
 
 
 def test_bom_stripped_from_text(session):
-    # المصدر يضع BOM في مقدّمة بعض الآيات فيفسد المحاذاة عند العرض
+    # The source prefixes some ayahs with a BOM, which breaks display alignment
     bom = session.scalar(select(func.count()).select_from(Ayah).where(Ayah.text.like("﻿%")))
     assert bom == 0
 

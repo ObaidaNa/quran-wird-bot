@@ -1,4 +1,4 @@
-"""محرّك SQLAlchemy وجلساته — نسختان: غير متزامنة للبوت، ومتزامنة للسكربتات."""
+"""SQLAlchemy engines and sessions: async for the bot, sync for scripts."""
 
 from __future__ import annotations
 
@@ -18,8 +18,8 @@ from sqlalchemy.ext.asyncio import (
 from sqlalchemy.orm import Session, sessionmaker
 
 _PRAGMAS = (
-    "PRAGMA journal_mode=WAL",  # يسمح بالقراءة أثناء الكتابة
-    "PRAGMA foreign_keys=ON",  # SQLite يعطّلها افتراضيًا لكل اتصال
+    "PRAGMA journal_mode=WAL",  # readers do not block on the writer
+    "PRAGMA foreign_keys=ON",  # SQLite disables FK enforcement per connection by default
     "PRAGMA synchronous=NORMAL",
     "PRAGMA busy_timeout=5000",
 )
@@ -60,7 +60,7 @@ def session_factory(engine: AsyncEngine) -> async_sessionmaker[AsyncSession]:
 async def session_scope(
     factory: async_sessionmaker[AsyncSession],
 ) -> AsyncIterator[AsyncSession]:
-    """جلسة داخل معاملة — تُثبَّت عند النجاح وتُلغى عند الخطأ."""
+    """Session wrapped in a transaction: commit on success, roll back on error."""
     async with factory() as session:
         try:
             yield session
@@ -72,7 +72,7 @@ async def session_scope(
 
 @contextmanager
 def sync_session_scope(engine: Engine) -> Iterator[Session]:
-    """نظيرها المتزامن — للسكربتات في scripts/."""
+    """Sync counterpart, used by the scripts in scripts/."""
     maker = sessionmaker(engine, expire_on_commit=False)
     with maker() as session:
         try:
@@ -84,7 +84,7 @@ def sync_session_scope(engine: Engine) -> Iterator[Session]:
 
 
 def run_migrations(db_path: Path) -> None:
-    """يطبّق هجرات Alembic حتى أحدث نسخة (يُستدعى عند إقلاع البوت)."""
+    """Upgrade the database to the latest Alembic revision (called on bot startup)."""
     from alembic.config import Config
 
     from alembic import command
@@ -97,8 +97,8 @@ def run_migrations(db_path: Path) -> None:
 
 
 def create_all_sync(conn: Connection) -> None:
-    """إنشاء الجداول مباشرة من النماذج — للاختبارات فقط، لا للإنتاج."""
-    from . import models  # noqa: F401  يسجّل النماذج في الـ metadata
+    """Create tables straight from the models. Tests only — production uses Alembic."""
+    from . import models  # noqa: F401  registers the models on the metadata
     from .base import Base
 
     Base.metadata.create_all(conn)

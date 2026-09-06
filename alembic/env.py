@@ -1,4 +1,4 @@
-"""بيئة Alembic — تقرأ النماذج من quran_wird.db.models."""
+"""Alembic environment; reads the models from quran_wird.db.models."""
 
 from __future__ import annotations
 
@@ -14,7 +14,7 @@ from alembic import context
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
 
-from quran_wird.db import models  # noqa: E402,F401  يسجّل الجداول في الـ metadata
+from quran_wird.db import models  # noqa: E402,F401  registers tables on the metadata
 from quran_wird.db.base import Base  # noqa: E402
 
 config = context.config
@@ -22,7 +22,7 @@ config = context.config
 if config.config_file_name is not None:
     fileConfig(config.config_file_name)
 
-# DB_PATH يغلب ما في alembic.ini، ليتطابق السكربت مع إعدادات البوت
+# DB_PATH overrides alembic.ini so the CLI targets the same database as the bot.
 db_path = os.environ.get("DB_PATH")
 if db_path:
     p = Path(db_path)
@@ -54,7 +54,7 @@ def run_migrations_online() -> None:
         context.configure(
             connection=connection,
             target_metadata=target_metadata,
-            # SQLite لا يدعم ALTER الكامل — batch mode يعيد بناء الجدول بأمان
+            # SQLite has no full ALTER TABLE; batch mode rebuilds the table safely.
             render_as_batch=True,
         )
         with context.begin_transaction():

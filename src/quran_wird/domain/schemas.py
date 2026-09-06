@@ -1,10 +1,10 @@
-"""مخطّطات Pydantic — التحقّق من المدخلات ونقل البيانات بين الطبقات.
+"""Pydantic schemas: input validation and transport between layers.
 
-نماذج SQLAlchemy تمثّل التخزين، وهذه تمثّل *العقود*:
-  * `GroupSettingsPatch` تتحقّق مما يرسله المشرف من لوحة `/settings`
-    قبل أن يمسّ قاعدة البيانات إطلاقًا.
-  * الباقي حِزَم بيانات جاهزة للعرض تُسلَّم لطبقة الرسائل، فتبقى مولّدات
-    النصوص خالية من منطق الاستعلام ويسهل اختبارها.
+The SQLAlchemy models describe storage; these describe the *contracts*:
+  * `GroupSettingsPatch` validates what an admin submits from the `/settings`
+    panel before any of it reaches the database.
+  * The rest are display-ready payloads handed to the message layer, which keeps
+    the text builders free of query logic and easy to test.
 """
 
 from __future__ import annotations
@@ -18,7 +18,7 @@ from ..db.models import AdvanceRule
 
 TOTAL_PAGES = 604
 
-Weekday = Annotated[int, Field(ge=0, le=6)]  # 0=الاثنين … 6=الأحد
+Weekday = Annotated[int, Field(ge=0, le=6)]  # 0=Monday … 6=Sunday
 PageNo = Annotated[int, Field(ge=1, le=TOTAL_PAGES)]
 
 
@@ -26,15 +26,15 @@ class ORMModel(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
 
-# ============================ الإعدادات ============================
+# =============================== Settings ===============================
 
 
 class GroupSettingsPatch(BaseModel):
-    """تعديل جزئي على إعدادات مجموعة — كل الحقول اختيارية.
+    """A partial update to a group's settings; every field is optional.
 
-    الحدود هنا ليست تجميلية: `pages_per_day` فوق 10 يتجاوز حدّ تيليجرام
-    لألبوم الصور الواحد، و`mentions_per_message` الكبير يحوّل التذكير إلى
-    قصف إشعارات.
+    The bounds are not cosmetic: a `pages_per_day` above 10 exceeds Telegram's
+    limit for a single media group, and a large `mentions_per_message` turns a
+    reminder into a notification barrage.
     """
 
     model_config = ConfigDict(extra="forbid")
@@ -72,14 +72,14 @@ class GroupSettingsPatch(BaseModel):
         try:
             ZoneInfo(v)
         except (ZoneInfoNotFoundError, ValueError) as exc:
-            raise ValueError(f"منطقة زمنية غير معروفة: {v}") from exc
+            raise ValueError(f"unknown timezone: {v}") from exc
         return v
 
     @field_validator("active_weekdays")
     @classmethod
     def _at_least_one_day(cls, v: list[int] | None) -> list[int] | None:
         if v is not None and not v:
-            raise ValueError("لا بدّ من يوم واحد مُفعّل على الأقل")
+            raise ValueError("at least one active weekday is required")
         return sorted(set(v)) if v else v
 
     def changes(self) -> dict[str, object]:
@@ -87,7 +87,7 @@ class GroupSettingsPatch(BaseModel):
 
 
 class GroupSettingsView(ORMModel):
-    """الإعدادات كما تُعرض في لوحة `/settings`."""
+    """Settings as rendered in the `/settings` panel."""
 
     chat_id: int
     title: str | None
@@ -112,11 +112,11 @@ class GroupSettingsView(ORMModel):
     is_active: bool
 
 
-# ============================ الورد ============================
+# ================================= Wird =================================
 
 
 class PageRange(BaseModel):
-    """نطاق صفحات ورد يوم واحد."""
+    """The page range for a single day's wird."""
 
     start: PageNo
     end: PageNo
@@ -124,7 +124,7 @@ class PageRange(BaseModel):
     @model_validator(mode="after")
     def _ordered(self) -> PageRange:
         if self.end < self.start:
-            raise ValueError("نهاية النطاق قبل بدايته")
+            raise ValueError("range ends before it starts")
         return self
 
     @property
@@ -137,7 +137,7 @@ class PageRange(BaseModel):
 
 
 class PageInfo(ORMModel):
-    """ما تحتويه صفحة — من جدول page_index."""
+    """What a page contains, from the page_index table."""
 
     page_no: int
     juz: int
@@ -148,7 +148,7 @@ class PageInfo(ORMModel):
 
 
 class WirdView(BaseModel):
-    """كل ما تحتاجه رسالة الورد اليومية."""
+    """Everything the daily wird message needs to render."""
 
     task_id: int
     task_date: dt.date
@@ -164,11 +164,11 @@ class WirdView(BaseModel):
         return len(self.done_names)
 
 
-# ============================ الأعضاء والتقارير ============================
+# ========================= Members and reports =========================
 
 
 class MemberProgress(ORMModel):
-    """إحصاءات عضو — تُعرض في /me وتُغذّي عبارات التقصير."""
+    """Member stats; shown by /me and used to pick the missed-days phrasing."""
 
     user_id: int
     display_name: str = ""
@@ -181,7 +181,7 @@ class MemberProgress(ORMModel):
 
 
 class KhatmahProgress(BaseModel):
-    """تقدّم المجموعة نحو ختم المصحف."""
+    """The group's progress toward completing the mushaf."""
 
     khatmah_number: int
     current_page: PageNo
@@ -201,7 +201,7 @@ class KhatmahProgress(BaseModel):
 
 
 class WeeklyReportData(BaseModel):
-    """حِزمة لوحة الشرف الأسبوعية."""
+    """Payload for the weekly honors board."""
 
     week_start: dt.date
     week_end: dt.date

@@ -1,18 +1,18 @@
 #!/usr/bin/env python3
-"""يبني فهرس المصحف في قاعدة البيانات من mushaf-content.json داخل hafs.zip.
+"""Build the mushaf reference index from mushaf-content.json inside hafs.zip.
 
     uv run scripts/build_index.py
 
-يملأ ثلاثة جداول مرجعية:
-  surahs     — 114 سورة: الاسم، عدد الآيات، أول/آخر صفحة
-  ayahs      — 6236 آية بنصّها وموضعها (أساس ميزة التفسير مستقبلًا)
-  page_index — لكل صفحة: الجزء، الحزب، أول/آخر آية، وأسماء السور الواقعة فيها
+Fills three reference tables:
+  surahs     - 114 surahs: name, ayah count, first/last page
+  ayahs      - 6236 ayahs with text and position (basis for the tafsir feature)
+  page_index - per page: juz, hizb, first/last ayah, and the surahs it spans
 
-page_index هو ما تستعمله رسالة الورد اليومية لتقول
-«الصفحات 120–121 · الجزء السادس · النساء».
+page_index is what lets the daily wird message say
+"pages 120-121 - juz 6 - an-Nisa".
 
-السكربت idempotent: يمسح الجداول المرجعية ويعيد بناءها، ولا يمسّ بيانات
-المجموعات ولا تقدّمها.
+Idempotent: it clears and rebuilds the reference tables only, never touching
+group data or khatmah progress.
 """
 
 from __future__ import annotations
@@ -43,12 +43,12 @@ TOTAL_PAGES = 604
 TOTAL_AYAHS = 6236
 TOTAL_SURAHS = 114
 
-# محرف BOM يتصدّر بعض نصوص الآيات في المصدر ويفسد المحاذاة عند العرض
+# The source prefixes some ayah texts with a BOM, which breaks display alignment
 BOM = "﻿"
 
 
 def short_name(name: str) -> str:
-    """«سورة البقرة» → «البقرة»"""
+    """Strip the leading word: "سورة البقرة" -> "البقرة"."""
     return name.removeprefix("سورة ").strip()
 
 
@@ -58,10 +58,10 @@ def load_content(zip_path: Path) -> list[dict]:
 
 
 def build_rows(surahs: list[dict]) -> tuple[list[dict], list[dict], list[dict]]:
-    """يحوّل شجرة JSON إلى صفوف الجداول الثلاثة."""
+    """Turn the JSON tree into rows for the three reference tables."""
     surah_rows: list[dict] = []
     ayah_rows: list[dict] = []
-    # ترتيب المصحف = ترتيب السور ثم الآيات كما وردت في المصدر
+    # Mushaf order = surahs in order, then ayahs in order, as the source lists them
     per_page: dict[int, list[tuple[int, int, str]]] = {}
     page_meta: dict[int, tuple[int, int]] = {}
 
@@ -104,7 +104,7 @@ def build_rows(surahs: list[dict]) -> tuple[list[dict], list[dict], list[dict]]:
         juz, hizb = page_meta[page]
         first_surah, first_ayah, _ = entries[0]
         last_surah, last_ayah, _ = entries[-1]
-        names = list(dict.fromkeys(e[2] for e in entries))  # فريدة بترتيب الورود
+        names = list(dict.fromkeys(e[2] for e in entries))  # unique, in order of appearance
         page_rows.append(
             {
                 "page_no": page,
@@ -126,42 +126,42 @@ def verify(session) -> list[str]:
     problems: list[str] = []
 
     counts = [
-        (Surah, TOTAL_SURAHS, "عدد السور"),
-        (Ayah, TOTAL_AYAHS, "عدد الآيات"),
-        (PageIndex, TOTAL_PAGES, "عدد الصفحات"),
+        (Surah, TOTAL_SURAHS, "surah count"),
+        (Ayah, TOTAL_AYAHS, "ayah count"),
+        (PageIndex, TOTAL_PAGES, "page count"),
     ]
     for model, expected, label in counts:
         got = session.scalar(select(func.count()).select_from(model))
         if got != expected:
-            problems.append(f"{label}: توقّعنا {expected} ووجدنا {got}")
+            problems.append(f"{label}: expected {expected}, found {got}")
 
     present = set(session.scalars(select(PageIndex.page_no)))
     missing = sorted(set(range(1, TOTAL_PAGES + 1)) - present)
     if missing:
-        problems.append(f"صفحات مفقودة: {missing[:10]}… ({len(missing)})")
+        problems.append(f"missing pages: {missing[:10]}... ({len(missing)})")
 
     juz_range = session.execute(select(func.min(PageIndex.juz), func.max(PageIndex.juz))).one()
     if juz_range != (1, 30):
-        problems.append(f"مدى الأجزاء غير صحيح: {tuple(juz_range)}")
+        problems.append(f"unexpected juz range: {tuple(juz_range)}")
 
     empty = session.scalar(select(func.count()).select_from(Ayah).where(Ayah.text == ""))
     if empty:
-        problems.append(f"{empty} آية بنصّ فارغ")
+        problems.append(f"{empty} ayahs have empty text")
 
     return problems
 
 
 def main() -> int:
-    ap = argparse.ArgumentParser(description="بناء فهرس المصحف")
+    ap = argparse.ArgumentParser(description="Build the mushaf reference index")
     ap.add_argument("--zip", type=Path, default=DEFAULT_ZIP)
     ap.add_argument("--db", type=Path, default=DEFAULT_DB)
     args = ap.parse_args()
 
     if not args.zip.exists():
-        sys.exit(f"الأرشيف غير موجود: {args.zip}")
+        sys.exit(f"archive not found: {args.zip}")
 
-    print(f"المصدر : {args.zip}")
-    print(f"القاعدة: {args.db}\n")
+    print(f"source  : {args.zip}")
+    print(f"database: {args.db}\n")
 
     run_migrations(args.db)
     surah_rows, ayah_rows, page_rows = build_rows(load_content(args.zip))
@@ -177,19 +177,19 @@ def main() -> int:
             session.bulk_insert_mappings(PageIndex, page_rows)
 
         with sync_session_scope(engine) as session:
-            print(f"  السور   : {len(surah_rows)}")
-            print(f"  الآيات  : {len(ayah_rows)}")
-            print(f"  الصفحات : {len(page_rows)}")
+            print(f"  surahs : {len(surah_rows)}")
+            print(f"  ayahs  : {len(ayah_rows)}")
+            print(f"  pages  : {len(page_rows)}")
 
             problems = verify(session)
             if problems:
-                print("\nمشاكل في التحقّق:", file=sys.stderr)
+                print("\nverification problems:", file=sys.stderr)
                 for p in problems:
                     print(f"  ✗ {p}", file=sys.stderr)
                 return 1
 
-            print("\n✓ التحقّق تمّ: 114 سورة · 6236 آية · 604 صفحة · الأجزاء 1–30")
-            print("\nعيّنة:")
+            print("\n✓ verified: 114 surahs, 6236 ayahs, 604 pages, juz 1-30")
+            print("\nsample:")
             sample = session.scalars(
                 select(PageIndex)
                 .where(PageIndex.page_no.in_([1, 2, 120, 293, 604]))
@@ -197,8 +197,8 @@ def main() -> int:
             )
             for r in sample:
                 print(
-                    f"  صفحة {r.page_no:>3} · الجزء {r.juz:>2} · {r.surah_names} "
-                    f"(الآيات {r.first_ayah}–{r.last_ayah})"
+                    f"  page {r.page_no:>3} | juz {r.juz:>2} | {r.surah_names} "
+                    f"(ayahs {r.first_ayah}-{r.last_ayah})"
                 )
     finally:
         engine.dispose()

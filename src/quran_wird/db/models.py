@@ -1,10 +1,10 @@
-"""نماذج SQLAlchemy — راجع docs/PLAN.md القسم 4.
+"""SQLAlchemy models. See docs/PLAN.md section 4.
 
-اصطلاحات:
-  * كل الطوابع الزمنية (`DateTime`) تُخزَّن بتوقيت UTC.
-  * التواريخ التقويمية (`Date`) واﻷوقات (`Time`) محليّة بتوقيت المجموعة —
-    فيوم الورد هو اليوم كما يراه أعضاء المجموعة لا كما يراه الخادم.
-  * القوائم تُخزَّن كـ JSON بدل نصوص مفصولة بفواصل.
+Conventions:
+  * `DateTime` columns are stored in UTC.
+  * `Date` and `Time` columns are local to the group's timezone — the wird day is
+    the day the group's members see, not the day the server is having.
+  * Lists are stored as JSON rather than comma-separated strings.
 """
 
 from __future__ import annotations
@@ -35,12 +35,12 @@ def utcnow() -> dt.datetime:
 
 
 class AdvanceRule(enum.StrEnum):
-    """متى تتقدّم صفحات المجموعة إلى الورد التالي."""
+    """When the group's page pointer moves on to the next wird."""
 
-    ANYONE = "anyone"  # يكفي أن يُنجز واحد (الافتراضي)
-    MAJORITY = "majority"  # أكثر من نصف المشتركين
-    ALL = "all"  # الجميع
-    ALWAYS = "always"  # دائمًا، أنجز أحد أم لا
+    ANYONE = "anyone"  # one subscriber finishing is enough (the default)
+    MAJORITY = "majority"  # more than half of the subscribers
+    ALL = "all"  # every subscriber
+    ALWAYS = "always"  # every active day, regardless of who read
 
 
 class TaskStatus(enum.StrEnum):
@@ -59,11 +59,11 @@ class BadgeKind(enum.StrEnum):
     KHATMAH = "khatmah"
 
 
-# ============================ المجموعات ============================
+# ================================ Groups ================================
 
 
 class Group(Base):
-    """مجموعة تيليجرام وإعداداتها وتقدّمها في الختمة."""
+    """A Telegram group: its settings and its progress through the khatmah."""
 
     __tablename__ = "groups"
 
@@ -71,14 +71,14 @@ class Group(Base):
     title: Mapped[str | None] = mapped_column(String(256))
     timezone: Mapped[str] = mapped_column(String(64), default="Asia/Damascus")
 
-    # --- الورد ---
+    # --- daily wird ---
     pages_per_day: Mapped[int] = mapped_column(default=2)
     active_weekdays: Mapped[list[int]] = mapped_column(
         JSON, default=lambda: [0, 1, 2, 3, 4, 5, 6]
-    )  # 0=الاثنين … 6=الأحد (مطابق لـ date.weekday())
+    )  # 0=Monday … 6=Sunday, matching date.weekday()
     send_time: Mapped[dt.time] = mapped_column(Time, default=dt.time(5, 0))
 
-    # --- التذكيرات ---
+    # --- reminders ---
     first_reminder_after_hours: Mapped[int] = mapped_column(default=8)
     reminder_interval_hours: Mapped[int] = mapped_column(default=3)
     reminder_max_count: Mapped[int] = mapped_column(default=3)
@@ -86,17 +86,17 @@ class Group(Base):
     quiet_hours_end: Mapped[dt.time | None] = mapped_column(Time, default=dt.time(7, 0))
     mentions_per_message: Mapped[int] = mapped_column(default=4)
 
-    # --- إغلاق اليوم ---
+    # --- end of day ---
     day_close_time: Mapped[dt.time] = mapped_column(Time, default=dt.time(23, 59))
     advance_rule: Mapped[AdvanceRule] = mapped_column(String(16), default=AdvanceRule.ANYONE)
 
-    # --- التقرير الأسبوعي ---
+    # --- weekly report ---
     weekly_report_enabled: Mapped[bool] = mapped_column(Boolean, default=True)
-    weekly_report_weekday: Mapped[int] = mapped_column(default=4)  # 4=الجمعة
+    weekly_report_weekday: Mapped[int] = mapped_column(default=4)  # 4=Friday
     weekly_report_time: Mapped[dt.time] = mapped_column(Time, default=dt.time(20, 0))
-    week_start_weekday: Mapped[int] = mapped_column(default=5)  # 5=السبت
+    week_start_weekday: Mapped[int] = mapped_column(default=5)  # 5=Saturday
 
-    # --- التقدّم ---
+    # --- progress ---
     current_page: Mapped[int] = mapped_column(default=1)
     khatmah_number: Mapped[int] = mapped_column(default=1)
     khatmah_started_on: Mapped[dt.date | None] = mapped_column(Date)
@@ -113,7 +113,7 @@ class Group(Base):
 
 
 class Subscriber(Base):
-    """عضو اشترك في الورد — الاشتراك اختياري، ولا يُنادى إلا المشتركون."""
+    """A member who opted in. Subscribing is optional; only subscribers get tagged."""
 
     __tablename__ = "subscribers"
 
@@ -132,11 +132,11 @@ class Subscriber(Base):
     __table_args__ = (Index("ix_subscribers_active", "chat_id", "is_active"),)
 
 
-# ============================ الورد اليومي ============================
+# ============================== Daily wird ==============================
 
 
 class DailyTask(Base):
-    """ورد يوم واحد في مجموعة واحدة."""
+    """One day's wird in one group."""
 
     __tablename__ = "daily_tasks"
 
@@ -144,7 +144,7 @@ class DailyTask(Base):
     chat_id: Mapped[int] = mapped_column(
         ForeignKey("groups.chat_id", ondelete="CASCADE"), index=True
     )
-    task_date: Mapped[dt.date] = mapped_column(Date)  # محلي بتوقيت المجموعة
+    task_date: Mapped[dt.date] = mapped_column(Date)  # local to the group's timezone
     page_start: Mapped[int]
     page_end: Mapped[int]
 
@@ -172,7 +172,7 @@ class DailyTask(Base):
 
 
 class Completion(Base):
-    """تسجيل إنجاز عضو لورد يوم."""
+    """A member marking one day's wird as read."""
 
     __tablename__ = "completions"
 
@@ -182,14 +182,14 @@ class Completion(Base):
     user_id: Mapped[int] = mapped_column(primary_key=True, autoincrement=False)
     done_at: Mapped[dt.datetime] = mapped_column(DateTime, default=utcnow)
     source: Mapped[CompletionSource] = mapped_column(String(16), default=CompletionSource.BUTTON)
-    # هل كان مشتركًا لحظة الإنجاز؟ يفرّق بين المشترك ومن ضغط الزر عرضًا
+    # Whether they were subscribed at the time; separates members from passers-by
     was_subscriber: Mapped[bool] = mapped_column(Boolean)
 
     task: Mapped[DailyTask] = relationship(back_populates="completions")
 
 
 class UserStats(Base):
-    """إحصاءات العضو داخل مجموعة بعينها (العضوية في عدّة مجموعات مستقلّة)."""
+    """Per-member stats within one group; memberships in several groups stay separate."""
 
     __tablename__ = "user_stats"
 
@@ -204,7 +204,7 @@ class UserStats(Base):
 
 
 class ReminderLog(Base):
-    """سجل التذكيرات المرسلة — يمنع تكرار تذكيرة بعد إعادة تشغيل البوت."""
+    """Log of sent reminders, so a restart cannot re-send one that already went out."""
 
     __tablename__ = "reminder_log"
 
@@ -216,11 +216,11 @@ class ReminderLog(Base):
     message_ids: Mapped[list[int] | None] = mapped_column(JSON)
 
 
-# ============================ التقارير والأوسمة ============================
+# ========================= Reports and badges =========================
 
 
 class WeeklyReport(Base):
-    """لوحة الشرف الأسبوعية — التخزين يجعل الإرسال idempotent."""
+    """The weekly honors board. Persisting it makes sending idempotent."""
 
     __tablename__ = "weekly_reports"
 
@@ -242,13 +242,13 @@ class Badge(Base):
     chat_id: Mapped[int] = mapped_column(primary_key=True, autoincrement=False)
     user_id: Mapped[int] = mapped_column(primary_key=True, autoincrement=False)
     badge: Mapped[BadgeKind] = mapped_column(String(32), primary_key=True)
-    # مرجع يميّز الوسام الواحد عن تكراره: تاريخ بدء الأسبوع أو رقم الختمة
+    # Distinguishes repeat awards of the same badge: week start date, or khatmah number
     ref: Mapped[str] = mapped_column(String(32), primary_key=True, default="")
     earned_at: Mapped[dt.datetime] = mapped_column(DateTime, default=utcnow)
 
 
 class Nudge(Base):
-    """آخر مرة دُعي فيها غير مشترك للاشتراك — بحدّ أقصى مرة كل أسبوع."""
+    """When a non-subscriber was last invited to join. At most once a week."""
 
     __tablename__ = "nudges"
 
@@ -258,7 +258,7 @@ class Nudge(Base):
 
 
 class PageMedia(Base):
-    """كاش file_id لصور الصفحات — ترفع الصورة مرة واحدة ثم تُرسل بمعرّفها."""
+    """file_id cache for page images: upload once, then send by id thereafter."""
 
     __tablename__ = "page_media"
 
@@ -268,22 +268,22 @@ class PageMedia(Base):
     uploaded_at: Mapped[dt.datetime] = mapped_column(DateTime, default=utcnow)
 
 
-# ============================ فهرس المصحف (مرجعي) ============================
+# ==================== Mushaf reference index (read-only) ====================
 
 
 class Surah(Base):
     __tablename__ = "surahs"
 
     number: Mapped[int] = mapped_column(primary_key=True, autoincrement=False)
-    name: Mapped[str] = mapped_column(String(64))  # «سورة البقرة»
-    short_name: Mapped[str] = mapped_column(String(64))  # «البقرة»
+    name: Mapped[str] = mapped_column(String(64))  # e.g. "سورة البقرة"
+    short_name: Mapped[str] = mapped_column(String(64))  # e.g. "البقرة"
     ayah_count: Mapped[int]
     first_page: Mapped[int]
     last_page: Mapped[int]
 
 
 class PageIndex(Base):
-    """ما تحتويه كل صفحة — تُبنى منه ترويسة رسالة الورد."""
+    """What each page contains; the daily wird message header is built from this."""
 
     __tablename__ = "page_index"
 
@@ -294,12 +294,12 @@ class PageIndex(Base):
     first_ayah: Mapped[int]
     last_surah: Mapped[int]
     last_ayah: Mapped[int]
-    surah_names: Mapped[str] = mapped_column(String(256))  # «البقرة، آل عمران»
+    surah_names: Mapped[str] = mapped_column(String(256))  # e.g. "البقرة، آل عمران"
     ayah_count: Mapped[int]
 
 
 class Ayah(Base):
-    """نصّ الآيات — أساس ميزتي التفسير والبحث مستقبلًا."""
+    """Ayah text; the basis for the planned tafsir and search features."""
 
     __tablename__ = "ayahs"
 

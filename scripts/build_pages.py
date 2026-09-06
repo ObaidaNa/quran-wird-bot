@@ -1,15 +1,15 @@
 #!/usr/bin/env python3
-"""يحوّل صفحات المصحف من hafs.zip (SVG) إلى صور PNG جاهزة للإرسال في تيليجرام.
+"""Render the mushaf pages from hafs.zip (SVG) into PNGs ready to send on Telegram.
 
     uv run scripts/build_pages.py
     uv run scripts/build_pages.py --width 1400 --force
 
-لماذا التوحيد؟ الصفحتان 1 و 2 مقاسهما في المصدر 235×235 (مربّع)، وباقي الصفحات
-345×550. بلا توحيد يبدو ألبوم الصفحتين الأولى مشوّهًا، لذلك تُوسَّط كل صفحة على
-لوحة بيضاء بنسبة 345:550 الثابتة.
+Why normalize? Pages 1 and 2 are 235x235 in the source while pages 3-604 are
+345x550. Left alone, the first album renders inconsistently, so every page is
+centered on a white canvas with the fixed 345:550 ratio.
 
-الصور رمادية بالكامل في المصدر (fill=#231f20 فقط)، لذلك التكميم إلى 32 درجة
-رمادية بلا خسارة مرئية ويقلّص الحجم من ~737KB إلى ~180KB للصفحة.
+The source art is monochrome (fill=#231f20 only), so quantizing to 32 gray levels
+is visually free and cuts each page from ~737KB to ~180KB.
 """
 
 from __future__ import annotations
@@ -27,15 +27,15 @@ DEFAULT_ZIP = PROJECT_ROOT / "assets" / "hafs.zip"
 DEFAULT_OUT = PROJECT_ROOT / "assets" / "pages"
 
 TOTAL_PAGES = 604
-PAGE_RATIO = 550 / 345  # نسبة صفحة المصحف القياسية في هذا المصدر
+PAGE_RATIO = 550 / 345  # the standard mushaf page ratio in this source
 GRAY_LEVELS = 32
 
 
 def check_tools() -> str:
-    """يتحقّق من وجود rsvg-convert وأداة ImageMagick، ويعيد اسم أمر ImageMagick."""
+    """Check that rsvg-convert and ImageMagick exist; return the ImageMagick command."""
     if not shutil.which("rsvg-convert"):
         sys.exit(
-            "rsvg-convert غير مثبّت.\n"
+            "rsvg-convert is not installed.\n"
             "  Arch:   sudo pacman -S librsvg\n"
             "  Debian: sudo apt install librsvg2-bin"
         )
@@ -43,14 +43,14 @@ def check_tools() -> str:
         if shutil.which(candidate):
             return candidate
     sys.exit(
-        "ImageMagick غير مثبّت.\n"
+        "ImageMagick is not installed.\n"
         "  Arch:   sudo pacman -S imagemagick\n"
         "  Debian: sudo apt install imagemagick"
     )
 
 
 def render_page(svg: bytes, out_path: Path, width: int, height: int, magick: str) -> None:
-    """SVG → PNG بعرض ثابت، ثم توسيط على لوحة بيضاء وتكميم إلى تدرّج رمادي."""
+    """SVG to PNG at a fixed width, centered on a white canvas, quantized to gray."""
     png = subprocess.run(
         ["rsvg-convert", "-w", str(width), "-b", "white", "-f", "png"],
         input=svg,
@@ -81,30 +81,30 @@ def render_page(svg: bytes, out_path: Path, width: int, height: int, magick: str
 
 
 def main() -> int:
-    ap = argparse.ArgumentParser(description="بناء صور صفحات المصحف")
-    ap.add_argument("--zip", type=Path, default=DEFAULT_ZIP, help="أرشيف المصدر")
-    ap.add_argument("--out", type=Path, default=DEFAULT_OUT, help="مجلد الإخراج")
-    ap.add_argument("--width", type=int, default=1240, help="عرض الصورة بالبكسل")
-    ap.add_argument("--jobs", type=int, default=0, help="عدد العمليات المتوازية (0=تلقائي)")
-    ap.add_argument("--force", action="store_true", help="أعد بناء الصفحات الموجودة")
+    ap = argparse.ArgumentParser(description="Build the mushaf page images")
+    ap.add_argument("--zip", type=Path, default=DEFAULT_ZIP, help="source archive")
+    ap.add_argument("--out", type=Path, default=DEFAULT_OUT, help="output directory")
+    ap.add_argument("--width", type=int, default=1240, help="image width in pixels")
+    ap.add_argument("--jobs", type=int, default=0, help="parallel workers (0=auto)")
+    ap.add_argument("--force", action="store_true", help="rebuild pages that already exist")
     args = ap.parse_args()
 
     if not args.zip.exists():
-        sys.exit(f"الأرشيف غير موجود: {args.zip}")
+        sys.exit(f"archive not found: {args.zip}")
 
     magick = check_tools()
     height = round(args.width * PAGE_RATIO)
     args.out.mkdir(parents=True, exist_ok=True)
 
-    print(f"المصدر : {args.zip}")
-    print(f"الإخراج: {args.out}")
-    print(f"المقاس : {args.width}×{height}  ({GRAY_LEVELS} درجة رمادية)\n")
+    print(f"source : {args.zip}")
+    print(f"output : {args.out}")
+    print(f"size   : {args.width}x{height}  ({GRAY_LEVELS} gray levels)\n")
 
     with zipfile.ZipFile(args.zip) as zf:
         names = set(zf.namelist())
         missing = [p for p in range(1, TOTAL_PAGES + 1) if f"{p:03d}.svg" not in names]
         if missing:
-            sys.exit(f"صفحات ناقصة في الأرشيف: {missing[:10]}… ({len(missing)} صفحة)")
+            sys.exit(f"pages missing from the archive: {missing[:10]}... ({len(missing)} pages)")
 
         todo = [
             p
@@ -112,10 +112,10 @@ def main() -> int:
             if args.force or not (args.out / f"{p:03d}.png").exists()
         ]
         if not todo:
-            print(f"كل الصفحات موجودة ({TOTAL_PAGES}). استخدم --force لإعادة البناء.")
+            print(f"all {TOTAL_PAGES} pages already built. Use --force to rebuild.")
             return 0
 
-        # القراءة من ZipFile ليست آمنة بين الخيوط، لذلك تُقرأ البايتات مسبقًا دفعةً دفعة
+        # ZipFile reads are not thread-safe, so read each chunk's bytes up front
         done = 0
         tty = sys.stdout.isatty()
         failures: list[tuple[int, str]] = []
@@ -144,22 +144,22 @@ def main() -> int:
                         failures.append((page, e.stderr.decode("utf-8", "replace")[:200]))
                     done += 1
                     if tty:
-                        print(f"\r  {done}/{len(todo)} صفحة…", end="", flush=True)
+                        print(f"\r  {done}/{len(todo)} pages...", end="", flush=True)
                     elif done % 100 == 0 or done == len(todo):
-                        print(f"  {done}/{len(todo)} صفحة…", flush=True)
+                        print(f"  {done}/{len(todo)} pages...", flush=True)
 
     if tty:
         print()
     if failures:
         for page, err in failures[:5]:
-            print(f"  فشلت الصفحة {page}: {err}", file=sys.stderr)
-        sys.exit(f"\nفشل بناء {len(failures)} صفحة.")
+            print(f"  page {page} failed: {err}", file=sys.stderr)
+        sys.exit(f"\n{len(failures)} pages failed to build.")
 
     files = sorted(args.out.glob("*.png"))
     total = sum(f.stat().st_size for f in files)
     print(
-        f"\nتمّ: {len(files)} صفحة · {total / 1024 / 1024:.0f} MB "
-        f"· متوسط {total / len(files) / 1024:.0f} KB للصفحة"
+        f"\ndone: {len(files)} pages, {total / 1024 / 1024:.0f} MB total, "
+        f"{total / len(files) / 1024:.0f} KB average"
     )
     return 0
 

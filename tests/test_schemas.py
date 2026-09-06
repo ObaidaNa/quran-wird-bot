@@ -1,4 +1,4 @@
-"""اختبارات مخطّطات Pydantic — التحقّق من صحّة ما يصل من لوحة الإعدادات."""
+"""Pydantic schema tests: validating what arrives from the settings panel."""
 
 from __future__ import annotations
 
@@ -30,7 +30,7 @@ class TestGroupSettingsPatch:
             GroupSettingsPatch(pages_per_day=pages)
 
     def test_rejects_unknown_field(self):
-        # extra="forbid" يمنع مرور مفتاح مكتوب خطأً بصمت
+        # extra="forbid" stops a misspelled key from being silently ignored
         with pytest.raises(ValidationError):
             GroupSettingsPatch(pages_per_dayy=2)
 
@@ -48,7 +48,7 @@ class TestGroupSettingsPatch:
         assert patch.changes()["active_weekdays"] == [0, 3, 5]
 
     def test_rejects_empty_weekdays(self):
-        # مجموعة بلا أيام مُفعّلة تعني بوتًا صامتًا إلى الأبد
+        # A group with no active weekdays means a bot that never speaks again
         with pytest.raises(ValidationError):
             GroupSettingsPatch(active_weekdays=[])
 
@@ -103,7 +103,7 @@ class TestKhatmahProgress:
         assert k.percent == 0
 
     def test_last_page_is_not_complete(self):
-        # الصفحة 604 هي الورد القادم، فبقيت صفحة واحدة لم تُقرأ بعد
+        # Page 604 is the *next* wird, so one page is still unread
         k = KhatmahProgress(khatmah_number=1, current_page=604)
         assert k.pages_done == 603
         assert k.pages_left == 1
@@ -129,9 +129,9 @@ class TestWeeklyReportData:
         assert round(r.completion_rate) == 78
 
     def test_no_division_by_zero_on_empty_week(self):
-        # أسبوع بلا مشتركين — يجب ألّا ينفجر التقرير
+        # A week with no subscribers must not blow up the report
         assert self._report(completions=0, possible_completions=0).completion_rate == 0.0
 
     def test_everyone_perfect_needs_members(self):
-        # لوحة شرف فارغة ليست «إتمامًا للجميع» حتى لو تطابق العدّادان
+        # An empty honors board is not 'everyone perfect', even when the counters match
         assert not self._report(completions=0, possible_completions=0).everyone_perfect

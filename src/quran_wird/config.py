@@ -1,4 +1,4 @@
-"""إعدادات التطبيق — تُقرأ من متغيّرات البيئة أو من ملف .env"""
+"""Application settings, read from environment variables or a .env file."""
 
 from __future__ import annotations
 
@@ -13,7 +13,7 @@ PROJECT_ROOT = Path(__file__).resolve().parents[2]
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
 
-    bot_token: str = Field(..., description="توكن البوت من BotFather")
+    bot_token: str = Field(..., description="Bot token from BotFather")
 
     db_path: Path = Path("data/bot.db")
     pages_dir: Path = Path("assets/pages")
@@ -21,7 +21,7 @@ class Settings(BaseSettings):
     default_timezone: str = "Asia/Damascus"
     log_level: str = "INFO"
 
-    # وضع التشغيل: إن كان webhook_url مضبوطًا يعمل بالـ webhook، وإلا long polling
+    # Run mode: webhook when webhook_url is set, otherwise long polling.
     webhook_url: str = ""
     secret_token: str = ""
     port: int = 8443
@@ -38,7 +38,7 @@ class Settings(BaseSettings):
 
     @property
     def effective_url_path(self) -> str:
-        """مسار الـ endpoint — يُشتقّ من التوكن إن لم يُحدَّد."""
+        """Endpoint path; falls back to the bot token when unset."""
         return (self.url_path or self.bot_token).strip("/")
 
     @property
