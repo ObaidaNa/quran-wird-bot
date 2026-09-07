@@ -57,6 +57,49 @@ class TestArabicNumerals:
             assert render.ar_date(dt.date(2026, month, 1))
 
 
+class TestArabicCounting:
+    """A number changes the noun after it in Arabic, and the panel is all numbers.
+
+    "٩ مشتركًا" is wrong the way "9 subscriber" is wrong in English, so the rule
+    is pinned here rather than left to whoever writes the next screen.
+    """
+
+    def test_zero_names_the_noun_without_a_digit(self):
+        assert render.counted(0, render.NOUNS["subscriber"]) == "لا مشترك"
+
+    def test_one_and_two_have_their_own_forms_and_no_digit(self):
+        assert render.counted(1, render.NOUNS["subscriber"]) == "مشترك واحد"
+        assert render.counted(2, render.NOUNS["subscriber"]) == "مشتركان"
+
+    def test_three_to_ten_take_the_plural(self):
+        assert render.counted(3, render.NOUNS["subscriber"]) == "٣ مشتركين"
+        assert render.counted(9, render.NOUNS["subscriber"]) == "٩ مشتركين"
+        assert render.counted(10, render.NOUNS["subscriber"]) == "١٠ مشتركين"
+
+    def test_eleven_to_ninety_nine_take_the_singular(self):
+        assert render.counted(11, render.NOUNS["subscriber"]) == "١١ مشتركًا"
+        assert render.counted(24, render.NOUNS["subscriber"]) == "٢٤ مشتركًا"
+        assert render.counted(99, render.NOUNS["subscriber"]) == "٩٩ مشتركًا"
+
+    def test_a_round_hundred_takes_the_bare_noun(self):
+        assert render.counted(100, render.NOUNS["subscriber"]) == "١٠٠ مشترك"
+
+    def test_the_form_follows_the_last_part_of_a_large_number(self):
+        # مئة وثلاثة مشتركين — the tamyiz agrees with the 3, not the 103.
+        assert render.counted(103, render.NOUNS["subscriber"]) == "١٠٣ مشتركين"
+        assert render.counted(115, render.NOUNS["subscriber"]) == "١١٥ مشتركًا"
+
+    def test_thousands_use_the_arabic_separator_not_a_comma(self):
+        # A Latin comma beside Arabic-Indic digits reads as a decimal point.
+        assert render.counted(5014, render.NOUNS["page"]) == "٥٬٠١٤ صفحة"
+        assert "," not in render.counted(5014, render.NOUNS["page"])
+
+    def test_feminine_nouns_agree_too(self):
+        assert render.counted(1, render.NOUNS["group"]) == "مجموعة واحدة"
+        assert render.counted(2, render.NOUNS["khatmah"]) == "ختمتان"
+        assert render.counted(6, render.NOUNS["group"]) == "٦ مجموعات"
+
+
 class TestPagesLine:
     def test_two_pages(self):
         line = render.pages_line(make_view())

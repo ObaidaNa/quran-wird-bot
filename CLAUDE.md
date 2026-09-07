@@ -44,6 +44,11 @@ The phrase pools in `messages/phrases.py` are reviewed and approved (docs/PLAN.m
 §7); three reviewed phrases were rejected and a test asserts they stay out. Do not
 add, remove or reword a phrase without asking.
 
+Counts must agree with their noun: Arabic changes the noun's form with the
+number, so «٩ مشتركًا» is as wrong as "9 subscriber". Build any counted phrase
+with `render.counted(n, NOUNS[...])` rather than interpolating a number in front
+of a noun, and add the five forms to `render.NOUNS` when a new noun is needed.
+
 When you write or change any user-facing Arabic, **render it and show it** — a
 short script that prints it, or an artifact — rather than asserting the wording
 reads well. It cannot be reviewed in a terminal.
@@ -97,6 +102,15 @@ is set because SQLite has no full `ALTER TABLE`.
 - **`Forbidden` is the one error retrying cannot fix** — it means the bot was
   kicked. Jobs that swallow their own send errors must re-raise it so the group
   can be deactivated.
+
+## The owner panel
+
+`/owner` is the one command that reads across every group at once. It is private
+chat only, absent from the command menu, and gated on `OWNER_IDS` — unset, it
+answers nobody, which is what keeps a fork from leaking its numbers. Ownership is
+re-checked on every button press, because the panel is a message and a message
+can be forwarded. Aggregates live in `db/repo/owner.py`; nothing there is ever
+shown inside a group.
 
 ## Storage conventions
 

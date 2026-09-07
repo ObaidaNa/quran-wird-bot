@@ -170,6 +170,90 @@ class WirdView(BaseModel):
         return len(self.done_names)
 
 
+# ============================ Owner panel ==============================
+
+
+class GroupDigest(BaseModel):
+    """One group as the owner panel lists it — never shown inside a group."""
+
+    chat_id: int
+    title: str | None = None
+    is_active: bool = True
+    subscribers: int = 0
+    current_page: int = 1
+    khatmah_number: int = 1
+    last_wird: dt.date | None = None
+
+    @property
+    def pages_read(self) -> int:
+        """This group's whole journey: finished khatmahs plus the current one."""
+        return (self.khatmah_number - 1) * TOTAL_PAGES + self.current_page - 1
+
+    @property
+    def percent(self) -> int:
+        """How far into the current khatmah, as a whole number."""
+        return round((self.current_page - 1) / TOTAL_PAGES * 100)
+
+
+class OwnerStats(BaseModel):
+    """The whole fleet in one payload, gathered in a single pass.
+
+    Everything here is a count the owner reads to judge whether the bot is
+    growing and whether the groups it holds are actually reading.
+    """
+
+    generated_at: dt.datetime
+
+    groups_total: int = 0
+    groups_active: int = 0
+    groups_new_week: int = 0
+    groups_new_month: int = 0
+    groups_reading_week: int = 0
+
+    unique_users: int = 0
+    subscriptions_total: int = 0
+    subscriptions_active: int = 0
+    members_on_streak: int = 0
+    longest_streak: int = 0
+    days_done: int = 0
+    days_missed: int = 0
+
+    khatmahs_completed: int = 0
+    pages_read: int = 0
+
+    wirds_total: int = 0
+    wirds_today: int = 0
+    wirds_week: int = 0
+    completions_total: int = 0
+    completions_today: int = 0
+    completions_week: int = 0
+
+    @property
+    def groups_dormant(self) -> int:
+        """Registered but not active: the bot was removed, or the group paused it."""
+        return max(0, self.groups_total - self.groups_active)
+
+    @property
+    def khatmahs_running(self) -> int:
+        """One shared khatmah per active group, by design (PLAN section 11)."""
+        return self.groups_active
+
+    @property
+    def khatmahs_equivalent(self) -> int:
+        """Pages read across the fleet, expressed as whole mushafs."""
+        return self.pages_read // TOTAL_PAGES
+
+    @property
+    def completion_rate(self) -> float:
+        """Share of expected readings that were actually marked done."""
+        expected = self.days_done + self.days_missed
+        return self.days_done / expected * 100 if expected else 0.0
+
+    @property
+    def members_per_group(self) -> float:
+        return self.subscriptions_active / self.groups_active if self.groups_active else 0.0
+
+
 class ReplaceOffer(BaseModel):
     """Today's already-sent wird next to the one the settings now describe.
 

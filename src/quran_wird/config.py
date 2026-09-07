@@ -22,6 +22,11 @@ class Settings(BaseSettings):
     default_timezone: str = "Asia/Damascus"
     log_level: str = "INFO"
 
+    # Telegram user ids allowed to open the owner panel, comma separated. Left
+    # empty the panel does not answer anyone, which is the right default for a
+    # repository anybody can clone and run.
+    owner_ids: str = ""
+
     # --- backups ---
     # The whole khatmah is one small SQLite file, so a nightly copy is cheap
     # insurance. 03:30 sits between the last reminder and the first send.
@@ -45,6 +50,16 @@ class Settings(BaseSettings):
     @classmethod
     def _absolutise(cls, v: Path) -> Path:
         return v if v.is_absolute() else PROJECT_ROOT / v
+
+    @property
+    def owners(self) -> frozenset[int]:
+        """Who may open the owner panel. An empty set disables it entirely."""
+        ids = set()
+        for part in self.owner_ids.split(","):
+            part = part.strip()
+            if part.lstrip("-").isdigit():
+                ids.add(int(part))
+        return frozenset(ids)
 
     @property
     def use_webhook(self) -> bool:

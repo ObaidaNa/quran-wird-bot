@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import datetime as dt
 from collections.abc import Sequence
+from dataclasses import dataclass
 
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup
 
@@ -43,6 +44,62 @@ MONTH_NAMES = (
 
 # Beyond this, the finisher list is summarised rather than spelled out.
 MAX_NAMES_SHOWN = 6
+
+# Arabic separates thousands with ٬ (U+066C), not the Latin comma, which reads
+# as a decimal point beside Arabic-Indic digits.
+THOUSANDS = "\u066c"
+
+
+@dataclass(frozen=True)
+class Noun:
+    """One noun in the forms Arabic counting needs.
+
+    A number does not simply sit in front of a noun in Arabic: it changes the
+    noun's form and its case. "٩ مشتركًا" is wrong the way "9 subscriber" is
+    wrong in English, and a dashboard full of counts shows every mistake.
+    """
+
+    one: str  # مشترك واحد
+    two: str  # مشتركان
+    few: str  # ٥ مشتركين — for 3 to 10
+    many: str  # ٢٤ مشتركًا — for 11 to 99
+    bare: str  # ١٠٠ مشترك — for round hundreds, and for "no ..."
+
+
+def counted(value: int, noun: Noun) -> str:
+    """A count with its noun in the right form, in Arabic-Indic digits.
+
+    The tamyiz follows the last part of the number, so 103 counts like 3 —
+    hence the modulo rather than a test on the whole value.
+    """
+    remainder = value % 100
+    if value == 0:
+        return f"لا {noun.bare}"
+    if value == 1:
+        return noun.one
+    if value == 2:
+        return noun.two
+    number = ar_num(f"{value:,}").replace(",", THOUSANDS)
+    if 3 <= remainder <= 10:
+        return f"{number} {noun.few}"
+    if remainder == 0:
+        return f"{number} {noun.bare}"
+    return f"{number} {noun.many}"
+
+
+NOUNS: dict[str, Noun] = {
+    "group": Noun("مجموعة واحدة", "مجموعتان", "مجموعات", "مجموعة", "مجموعة"),
+    "person": Noun("شخص واحد", "شخصان", "أشخاص", "شخصًا", "شخص"),
+    "subscriber": Noun("مشترك واحد", "مشتركان", "مشتركين", "مشتركًا", "مشترك"),
+    "member": Noun("عضو واحد", "عضوان", "أعضاء", "عضوًا", "عضو"),
+    "day": Noun("يوم واحد", "يومان", "أيام", "يومًا", "يوم"),
+    "wird": Noun("ورد واحد", "وردان", "أوراد", "وردًا", "ورد"),
+    "completion": Noun("إنجاز واحد", "إنجازان", "إنجازات", "إنجازًا", "إنجاز"),
+    "khatmah": Noun("ختمة واحدة", "ختمتان", "ختمات", "ختمة", "ختمة"),
+    "page": Noun("صفحة واحدة", "صفحتان", "صفحات", "صفحة", "صفحة"),
+    "mushaf": Noun("مصحف كامل", "مصحفان كاملان", "مصاحف كاملة", "مصحفًا كاملًا", "مصحف كامل"),
+    "subscription": Noun("اشتراك واحد", "اشتراكان", "اشتراكات", "اشتراكًا", "اشتراك"),
+}
 
 CB_DONE = "done"
 CB_WHO = "who"
