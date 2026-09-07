@@ -83,7 +83,7 @@ def home(stats: OwnerStats) -> tuple[str, InlineKeyboardMarkup]:
             f"📖 <b>{counted(stats.khatmahs_completed, NOUNS['khatmah'])}</b> مكتملة"
             f" · <b>{num(stats.khatmahs_running)}</b> جارية الآن",
             f"📄 <b>{counted(stats.pages_read, NOUNS['page'])}</b> مقروءة"
-            f" — نحو {counted(stats.khatmahs_equivalent, NOUNS['mushaf'])}",
+            f" — نحو {counted(stats.khatmahs_equivalent, NOUNS['mushaf'], oblique=True)}",
             f"✅ معدّل الإنجاز: <b>{pct(stats.completion_rate)}</b>",
             "",
             f"📈 اليوم: {counted(stats.wirds_today, NOUNS['wird'])}"
@@ -132,8 +132,8 @@ def activity(stats: OwnerStats) -> tuple[str, InlineKeyboardMarkup]:
             f"<b>آخر سبعة أيام:</b> {counted(stats.wirds_week, NOUNS['wird'])}"
             f" · {counted(stats.completions_week, NOUNS['completion'])}",
             "",
-            f"🏘️ قرأت هذا الأسبوع: <b>{num(stats.groups_reading_week)}</b>"
-            f" من {counted(stats.groups_active, NOUNS['group'])} نشطة",
+            f"🏘️ المجموعات التي قرأت هذا الأسبوع: <b>{num(stats.groups_reading_week)}</b>"
+            f" من {num(stats.groups_active)}",
             f"✨ مجموعات جديدة: <b>{num(stats.groups_new_week)}</b> هذا الأسبوع"
             f" · {num(stats.groups_new_month)} هذا الشهر",
             "",
@@ -154,7 +154,7 @@ def khatmahs(stats: OwnerStats, nearest: list[GroupDigest]) -> tuple[str, Inline
         f"✅ مكتملة: <b>{counted(stats.khatmahs_completed, NOUNS['khatmah'])}</b>",
         f"🔄 جارية الآن: <b>{counted(stats.khatmahs_running, NOUNS['khatmah'])}</b>",
         f"📄 <b>{counted(stats.pages_read, NOUNS['page'])}</b> مقروءة"
-        f" — نحو {counted(stats.khatmahs_equivalent, NOUNS['mushaf'])}",
+        f" — نحو {counted(stats.khatmahs_equivalent, NOUNS['mushaf'], oblique=True)}",
     ]
     if nearest:
         parts += ["", "<b>الأقرب إلى الختم:</b>"]

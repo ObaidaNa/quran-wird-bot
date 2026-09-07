@@ -94,6 +94,26 @@ class TestArabicCounting:
         assert render.counted(5014, render.NOUNS["page"]) == "٥٬٠١٤ صفحة"
         assert "," not in render.counted(5014, render.NOUNS["page"])
 
+    def test_only_two_changes_form_with_its_case(self):
+        """«يومان» standing alone, «في يومين» after a preposition.
+
+        The dual is the one count whose written form moves with its case even
+        unvocalised, so it is the only one `oblique` may change.
+        """
+        day = render.NOUNS["day"]
+        assert render.counted(2, day) == "يومان"
+        assert render.counted(2, day, oblique=True) == "يومين"
+
+        for value in (0, 1, 3, 7, 11, 100, 103):
+            assert render.counted(value, day) == render.counted(value, day, oblique=True)
+
+    def test_an_adjective_travels_with_the_noun_it_describes(self):
+        # "متتالي" has to agree in number and case just as the noun does.
+        streak = render.NOUNS["streak_day"]
+        assert render.counted(2, streak) == "يومان متتاليان"
+        assert render.counted(5, streak) == "٥ أيام متتالية"
+        assert render.counted(23, streak) == "٢٣ يومًا متتاليًا"
+
     def test_feminine_nouns_agree_too(self):
         assert render.counted(1, render.NOUNS["group"]) == "مجموعة واحدة"
         assert render.counted(2, render.NOUNS["khatmah"]) == "ختمتان"

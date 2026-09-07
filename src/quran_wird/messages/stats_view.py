@@ -1,6 +1,9 @@
 """Rendering the reports: /me, /progress, /top, and the weekly honors board.
 
-The board's template is the approved one from docs/PLAN.md section 7.9.
+The board's template is the approved one from docs/PLAN.md section 7.9. Counts
+go through `render.counted`, which reproduces that template exactly for the
+numbers it was written with and fixes the ones it was not — «٣ يومًا» was as
+wrong as "3 day", and the template simply never showed a number that small.
 
 Names here are plain text, escaped, never mentions. That is a settled decision:
 the honors board is a celebration, not a notification, and the only place the
@@ -16,7 +19,7 @@ from ..domain.schemas import TOTAL_PAGES, MemberProgress
 from ..domain.weekly import MemberWeek, WeekSummary
 from ..tg.mentions import safe_name
 from .phrases import WEEK_EVERYONE_PERFECT, WEEK_NOBODY_PERFECT, phrases
-from .render import MONTH_NAMES, ar_date, ar_num
+from .render import MONTH_NAMES, NOUNS, ar_date, ar_num, counted
 
 # Medals for the first three places; the rest are numbered.
 MEDALS = ("🥇", "🥈", "🥉")
@@ -34,6 +37,16 @@ def date_range(start: dt.date, end: dt.date) -> str:
     return f"{ar_date(start)} — {ar_date(end)}"
 
 
+def about(value: int) -> str:
+    """The "roughly" marker, dropped when the count shows no digit.
+
+    One and two are words in Arabic — «أسبوعين», not «٢ أسبوع» — and a tilde in
+    front of a word reads as a typo rather than an approximation. The template
+    in docs/PLAN.md section 7.9 keeps its «~١٤ أسبوعًا» unchanged.
+    """
+    return "~" if value > 2 else ""
+
+
 def place(index: int) -> str:
     return MEDALS[index] if index < len(MEDALS) else f"{ar_num(index + 1)}."
 
@@ -46,17 +59,19 @@ def member_report(progress: MemberProgress, *, subscribed: bool, badges: int = 0
     parts = [f"📊 <b>{safe_name(progress.display_name)}</b>", ""]
 
     if progress.current_streak:
-        parts.append(f"🔥 <b>{ar_num(progress.current_streak)}</b> يومًا متتاليًا — لا تقطعها")
+        streak = counted(progress.current_streak, NOUNS["streak_day"])
+        parts.append(f"🔥 <b>{streak}</b> — لا تقطعها")
     else:
         parts.append("🔥 لا سلسلة جارية — ورد اليوم يبدأ واحدة جديدة")
 
-    parts.append(f"✅ أتممت: <b>{ar_num(progress.total_done)}</b> يومًا")
+    parts.append(f"✅ أتممت: <b>{counted(progress.total_done, NOUNS['day'], oblique=True)}</b>")
     if progress.best_streak > progress.current_streak:
-        parts.append(f"🏆 أطول سلسلة لك: <b>{ar_num(progress.best_streak)}</b> يومًا")
+        best = counted(progress.best_streak, NOUNS["day"])
+        parts.append(f"🏆 أطول سلسلة لك: <b>{best}</b>")
     if progress.total_missed:
-        parts.append(f"⏳ فاتك: {ar_num(progress.total_missed)} يومًا")
+        parts.append(f"⏳ فاتك: {counted(progress.total_missed, NOUNS['day'])}")
     if badges:
-        parts.append(f"🏅 أسابيع كاملة بلا تخلّف: <b>{ar_num(badges)}</b>")
+        parts.append(f"🏅 <b>{counted(badges, NOUNS['perfect_week'])}</b> بلا تخلّف")
     if progress.last_done_date:
         parts.append(f"🕊 آخر ورد أتممته: {ar_date(progress.last_done_date)}")
 
@@ -86,16 +101,19 @@ def khatmah_report(
         f"📖 <b>تقدّم الختمة رقم {ar_num(khatmah_number)}</b>",
         "",
         f"{progress_bar(current_page)} {ar_num(percent)}٪",
-        f"الصفحة <b>{ar_num(current_page)}</b> من {ar_num(TOTAL_PAGES)} · بقيت {ar_num(left)} صفحة",
+        f"الصفحة <b>{ar_num(current_page)}</b> من {ar_num(TOTAL_PAGES)}"
+        f" · بقيت {counted(left, NOUNS['page'])}",
     ]
     if started_on:
         parts.append(f"بدأنا في {day_month(started_on)}")
     parts.append("")
     parts.append(
-        f"🗓 المعدّل: {ar_num(pages_per_day)} صفحة في اليوم · المشتركون {ar_num(subscriber_count)}"
+        f"🗓 المعدّل: {counted(pages_per_day, NOUNS['page'])} في اليوم"
+        f" · {counted(subscriber_count, NOUNS['subscriber'])}"
     )
     if weeks_left:
-        parts.append(f"⏳ على هذا المعدّل نختم خلال ~{ar_num(weeks_left)} أسبوعًا بإذن الله")
+        weeks = counted(weeks_left, NOUNS["week"], oblique=True)
+        parts.append(f"⏳ على هذا المعدّل نختم خلال {about(weeks_left)}{weeks} بإذن الله")
     return "\n".join(parts)
 
 
@@ -164,16 +182,16 @@ def weekly_report(
     if top_streak and top_streak.current_streak > 1:
         parts.append(
             f"\n🔥 <b>أطول سلسلة متتالية:</b> {safe_name(top_streak.display_name)}"
-            f" — {ar_num(top_streak.current_streak)} يومًا"
+            f" — {counted(top_streak.current_streak, NOUNS['day'])}"
         )
 
     parts.append(
         f"\n📖 <b>تقدّم الختمة (رقم {ar_num(khatmah_number)}):</b>\n"
         f"   {progress_bar(current_page)} {ar_num(percent)}٪\n"
         f"   الصفحة {ar_num(current_page)} من {ar_num(TOTAL_PAGES)}"
-        f" · بقيت {ar_num(TOTAL_PAGES - done)} صفحة\n"
-        f"   قرأنا هذا الأسبوع: {ar_num(summary.pages_read)} صفحة"
-        f" في {ar_num(summary.active_days)} أيام"
+        f" · بقيت {counted(TOTAL_PAGES - done, NOUNS['page'])}\n"
+        f"   قرأنا هذا الأسبوع: {counted(summary.pages_read, NOUNS['page'])}"
+        f" في {counted(summary.active_days, NOUNS['day'], oblique=True)}"
     )
 
     if summary.possible_completions:
@@ -183,7 +201,8 @@ def weekly_report(
         )
 
     if weeks_left:
-        parts.append(f"\n⏳ على هذا المعدّل نختم بإذن الله خلال ~{ar_num(weeks_left)} أسبوعًا")
+        weeks = counted(weeks_left, NOUNS["week"], oblique=True)
+        parts.append(f"\n⏳ على هذا المعدّل نختم بإذن الله خلال {about(weeks_left)}{weeks}")
 
     parts.append(f"\n{phrases.weekly_closer.pick(chat_id)}")
     return "\n".join(parts)

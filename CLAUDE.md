@@ -47,7 +47,12 @@ add, remove or reword a phrase without asking.
 Counts must agree with their noun: Arabic changes the noun's form with the
 number, so «٩ مشتركًا» is as wrong as "9 subscriber". Build any counted phrase
 with `render.counted(n, NOUNS[...])` rather than interpolating a number in front
-of a noun, and add the five forms to `render.NOUNS` when a new noun is needed.
+of a noun, and add the six forms to `render.NOUNS` when a new noun is needed.
+Pass `oblique=True` when the phrase follows a preposition or is a verb's object
+— two is the one count whose written form moves with its case, «يومان» alone but
+«في يومين». An adjective has to agree as well, so it travels inside the noun's
+forms (see `streak_day`). Two approved phrases in `phrases.py` still count the
+old way; they are left alone by the phrase-pool rule above, not by oversight.
 
 When you write or change any user-facing Arabic, **render it and show it** — a
 short script that prints it, or an artifact — rather than asserting the wording

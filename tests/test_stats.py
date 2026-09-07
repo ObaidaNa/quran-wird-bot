@@ -70,7 +70,9 @@ class TestMe:
         await badges.award(CHAT, 1, BadgeKind.PERFECT_WEEK, ref="2026-08-29")
         await badges.award(CHAT, 1, BadgeKind.PERFECT_WEEK, ref="2026-09-05")
 
-        assert "٢" in await member_report(deps, CHAT, 1, display_name="أحمد")
+        # Two is the dual in Arabic: «أسبوعان» carries the count, so there is
+        # no digit to look for.
+        assert "أسبوعان كاملان" in await member_report(deps, CHAT, 1, display_name="أحمد")
 
     async def test_a_stranger_is_invited_rather_than_shown_zeros(self, session, deps, group):
         text = await member_report(deps, CHAT, 99, display_name="زائر")
@@ -85,6 +87,49 @@ class TestMe:
         assert "٣٠" in text
         # ...and is told how to come back.
         assert "/join" in text
+
+
+class TestReportsCountInArabic:
+    """The reports are mostly numbers, and Arabic changes the noun after each one.
+
+    These pin the counts that used to read as «٣ يومًا» — wrong the way
+    "3 day" is wrong — and the dual, which also moves with its case.
+    """
+
+    async def test_three_to_ten_days_take_the_plural(self, session, deps, group):
+        await subscribe(session, "أحمد")
+        await stats_for(session, 1, current_streak=5, total_done=7, total_missed=3)
+
+        report = await member_report(deps, CHAT, 1, display_name="أحمد")
+        assert "٥ أيام متتالية" in report
+        assert "٧ أيام" in report
+        assert "٣ أيام" in report
+        assert "يومًا" not in report
+
+    async def test_eleven_and_above_take_the_singular(self, session, deps, group):
+        await subscribe(session, "أحمد")
+        await stats_for(session, 1, current_streak=23, total_done=140)
+
+        report = await member_report(deps, CHAT, 1, display_name="أحمد")
+        assert "٢٣ يومًا متتاليًا" in report
+        assert "١٤٠ يومًا" in report
+
+    async def test_the_dual_follows_its_case(self, session, deps, group):
+        """«يومان متتاليان» as the subject, «أتممت يومين» as the object."""
+        await subscribe(session, "أحمد")
+        await stats_for(session, 1, current_streak=2, total_done=2)
+
+        report = await member_report(deps, CHAT, 1, display_name="أحمد")
+        assert "🔥 <b>يومان متتاليان</b>" in report
+        assert "أتممت: <b>يومين</b>" in report
+
+    async def test_one_day_is_a_word_not_a_digit(self, session, deps, group):
+        await subscribe(session, "أحمد")
+        await stats_for(session, 1, current_streak=1, total_done=1)
+
+        report = await member_report(deps, CHAT, 1, display_name="أحمد")
+        assert "يوم واحد" in report
+        assert "١ يوم" not in report
 
 
 class TestProgress:

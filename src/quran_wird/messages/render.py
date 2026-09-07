@@ -60,17 +60,23 @@ class Noun:
     """
 
     one: str  # مشترك واحد
-    two: str  # مشتركان
+    two: str  # مشتركان — nominative dual
+    two_oblique: str  # مشتركين — after a preposition, or as an object
     few: str  # ٥ مشتركين — for 3 to 10
     many: str  # ٢٤ مشتركًا — for 11 to 99
     bare: str  # ١٠٠ مشترك — for round hundreds, and for "no ..."
 
 
-def counted(value: int, noun: Noun) -> str:
+def counted(value: int, noun: Noun, *, oblique: bool = False) -> str:
     """A count with its noun in the right form, in Arabic-Indic digits.
 
     The tamyiz follows the last part of the number, so 103 counts like 3 —
     hence the modulo rather than a test on the whole value.
+
+    `oblique` is needed only for two, the one count whose written form changes
+    with its case even unvocalised: «يومان» standing alone, but «في يومين» after
+    a preposition and «أتممت يومين» as an object. Pass it wherever the phrase is
+    not the subject of its sentence.
     """
     remainder = value % 100
     if value == 0:
@@ -78,7 +84,7 @@ def counted(value: int, noun: Noun) -> str:
     if value == 1:
         return noun.one
     if value == 2:
-        return noun.two
+        return noun.two_oblique if oblique else noun.two
     number = ar_num(f"{value:,}").replace(",", THOUSANDS)
     if 3 <= remainder <= 10:
         return f"{number} {noun.few}"
@@ -88,17 +94,42 @@ def counted(value: int, noun: Noun) -> str:
 
 
 NOUNS: dict[str, Noun] = {
-    "group": Noun("مجموعة واحدة", "مجموعتان", "مجموعات", "مجموعة", "مجموعة"),
-    "person": Noun("شخص واحد", "شخصان", "أشخاص", "شخصًا", "شخص"),
-    "subscriber": Noun("مشترك واحد", "مشتركان", "مشتركين", "مشتركًا", "مشترك"),
-    "member": Noun("عضو واحد", "عضوان", "أعضاء", "عضوًا", "عضو"),
-    "day": Noun("يوم واحد", "يومان", "أيام", "يومًا", "يوم"),
-    "wird": Noun("ورد واحد", "وردان", "أوراد", "وردًا", "ورد"),
-    "completion": Noun("إنجاز واحد", "إنجازان", "إنجازات", "إنجازًا", "إنجاز"),
-    "khatmah": Noun("ختمة واحدة", "ختمتان", "ختمات", "ختمة", "ختمة"),
-    "page": Noun("صفحة واحدة", "صفحتان", "صفحات", "صفحة", "صفحة"),
-    "mushaf": Noun("مصحف كامل", "مصحفان كاملان", "مصاحف كاملة", "مصحفًا كاملًا", "مصحف كامل"),
-    "subscription": Noun("اشتراك واحد", "اشتراكان", "اشتراكات", "اشتراكًا", "اشتراك"),
+    "group": Noun("مجموعة واحدة", "مجموعتان", "مجموعتين", "مجموعات", "مجموعة", "مجموعة"),
+    "person": Noun("شخص واحد", "شخصان", "شخصين", "أشخاص", "شخصًا", "شخص"),
+    "subscriber": Noun("مشترك واحد", "مشتركان", "مشتركين", "مشتركين", "مشتركًا", "مشترك"),
+    "member": Noun("عضو واحد", "عضوان", "عضوين", "أعضاء", "عضوًا", "عضو"),
+    "day": Noun("يوم واحد", "يومان", "يومين", "أيام", "يومًا", "يوم"),
+    "wird": Noun("ورد واحد", "وردان", "وردين", "أوراد", "وردًا", "ورد"),
+    "completion": Noun("إنجاز واحد", "إنجازان", "إنجازين", "إنجازات", "إنجازًا", "إنجاز"),
+    "khatmah": Noun("ختمة واحدة", "ختمتان", "ختمتين", "ختمات", "ختمة", "ختمة"),
+    "page": Noun("صفحة واحدة", "صفحتان", "صفحتين", "صفحات", "صفحة", "صفحة"),
+    "mushaf": Noun(
+        "مصحف كامل",
+        "مصحفان كاملان",
+        "مصحفين كاملين",
+        "مصاحف كاملة",
+        "مصحفًا كاملًا",
+        "مصحف كامل",
+    ),
+    "subscription": Noun("اشتراك واحد", "اشتراكان", "اشتراكين", "اشتراكات", "اشتراكًا", "اشتراك"),
+    "week": Noun("أسبوع واحد", "أسبوعان", "أسبوعين", "أسابيع", "أسبوعًا", "أسبوع"),
+    # The adjective has to agree as well as the noun, so it travels with it.
+    "streak_day": Noun(
+        "يوم واحد",
+        "يومان متتاليان",
+        "يومين متتاليين",
+        "أيام متتالية",
+        "يومًا متتاليًا",
+        "يوم متتالٍ",
+    ),
+    "perfect_week": Noun(
+        "أسبوع كامل",
+        "أسبوعان كاملان",
+        "أسبوعين كاملين",
+        "أسابيع كاملة",
+        "أسبوعًا كاملًا",
+        "أسبوع كامل",
+    ),
 }
 
 CB_DONE = "done"
@@ -217,7 +248,7 @@ def khatmah_progress_line(current_page: int, khatmah_number: int) -> str:
         f"📖 <b>تقدّم الختمة (رقم {ar_num(khatmah_number)}):</b>\n"
         f"   {progress_bar(current_page)} {ar_num(percent)}٪\n"
         f"   الصفحة {ar_num(current_page)} من {ar_num(TOTAL_PAGES)} · "
-        f"بقيت {ar_num(TOTAL_PAGES - done)} صفحة"
+        f"بقيت {counted(TOTAL_PAGES - done, NOUNS['page'])}"
     )
 
 
@@ -302,7 +333,7 @@ def day_summary(view: DaySummaryView) -> str:
     if view.top_streak_name and view.top_streak_days > 1:
         parts.append(
             f"\n🔥 أطول سلسلة: {safe_name(view.top_streak_name)}"
-            f" — {ar_num(view.top_streak_days)} يومًا"
+            f" — {counted(view.top_streak_days, NOUNS['day'])}"
         )
 
     parts.append(f"\n{next_wird_line(view)}")

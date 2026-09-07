@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import datetime as dt
+from zoneinfo import ZoneInfo
 
 import pytest
 from fakes import FakeBot
@@ -86,9 +87,13 @@ class TestQuietHours:
 
     async def test_reminder_is_skipped_during_quiet_hours(self, session, deps, task, group):
         await subscribe(session, "أحمد")
-        # A window covering the whole day, so "now" is always inside it.
-        group.quiet_hours_start = dt.time(0, 0)
-        group.quiet_hours_end = dt.time(23, 59)
+        # An hour-long window opening now, in the group's own timezone. A fixed
+        # 00:00-23:59 looks like "the whole day" but excludes 23:59 exactly,
+        # because the comparison is half-open — and the suite then failed for
+        # one minute a night.
+        now = dt.datetime.now(ZoneInfo(group.timezone))
+        group.quiet_hours_start = now.time().replace(second=0, microsecond=0)
+        group.quiet_hours_end = (now + dt.timedelta(hours=1)).time()
         await session.flush()
 
         bot = FakeBot()

@@ -18,7 +18,7 @@ from ..db.models import AdvanceRule, Group, Subscriber
 from ..domain.schemas import TOTAL_PAGES
 from ..domain.settings import days_to_finish
 from ..tg.mentions import safe_name
-from .render import WEEKDAY_NAMES, ar_num
+from .render import NOUNS, WEEKDAY_NAMES, ar_num, counted
 
 CB = "cfg"
 
@@ -137,7 +137,7 @@ def home(group: Group, subscriber_count: int) -> tuple[str, InlineKeyboardMarkup
     text = (
         "⚙️ <b>إعدادات الورد</b>\n"
         f"المشتركون: {ar_num(subscriber_count)}\n\n"
-        f"📖 الصفحات اليومية: <b>{ar_num(group.pages_per_day)}</b>"
+        f"📖 الصفحات اليومية: <b>{counted(group.pages_per_day, NOUNS['page'])}</b>"
         f" · ختمة كل {ar_num(khatmah_days)} يوم قراءة\n"
         f"🕔 موعد الإرسال: <b>{clock(group.send_time)}</b>\n"
         f"📅 أيام الورد: <b>{weekdays_label(group.active_weekdays)}</b>\n"
@@ -172,13 +172,14 @@ def home(group: Group, subscriber_count: int) -> tuple[str, InlineKeyboardMarkup
 def pages(group: Group) -> tuple[str, InlineKeyboardMarkup]:
     text = (
         "📖 <b>الصفحات اليومية</b>\n\n"
-        f"القيمة الآن: <b>{ar_num(group.pages_per_day)}</b> صفحة في اليوم\n"
+        f"القيمة الآن: <b>{counted(group.pages_per_day, NOUNS['page'])}</b> في اليوم\n"
         f"بهذا المعدّل تكتمل الختمة في نحو "
-        f"<b>{ar_num(days_to_finish(group.pages_per_day))}</b> يوم قراءة.\n\n"
+        f"<b>{counted(days_to_finish(group.pages_per_day), NOUNS['day'], oblique=True)}</b>"
+        f" من القراءة.\n\n"
         "<i>فوق عشر صفحات يُقسَّم الألبوم إلى أكثر من رسالة.</i>\n"
         "<i>وإن كان ورد اليوم قد أُرسل، فالأمر /sendnow يعرض استبداله بالعدد الجديد.</i>"
     )
-    rows = [_stepper("pages", f"{ar_num(group.pages_per_day)} صفحة"), _back()]
+    rows = [_stepper("pages", counted(group.pages_per_day, NOUNS["page"])), _back()]
     return text, InlineKeyboardMarkup(rows)
 
 
