@@ -37,6 +37,7 @@ class FakeBot:
         self.edits: list[dict] = []
         self.pinned: list[int] = []
         self.unpinned: list[int] = []
+        self.deleted: list[int] = []
         self.fail_on_file_id = fail_on_file_id
         self.edit_error = edit_error
         self._next_id = 1000
@@ -74,6 +75,10 @@ class FakeBot:
 
     async def unpin_chat_message(self, chat_id, message_id=None, **kw):
         self.unpinned.append(message_id)
+        return True
+
+    async def delete_message(self, chat_id, message_id, **kw):
+        self.deleted.append(message_id)
         return True
 
     async def edit_message_text(self, chat_id, message_id, text, reply_markup=None, **kw):

@@ -8,7 +8,7 @@ from telegram import Bot, Update
 from telegram.error import BadRequest, TelegramError
 from telegram.ext import Application, CallbackQueryHandler, CommandHandler, ContextTypes, filters
 
-from ..db.models import CompletionSource, DailyTask, TaskStatus
+from ..db.models import CompletionSource, DailyTask
 from ..db.repo import NudgeRepo, StatsRepo, SubscriberRepo, TaskRepo
 from ..db.session import session_scope
 from ..deps import Deps, get_deps
@@ -70,7 +70,7 @@ async def record_completion(
 
         if task is None or task.chat_id != chat_id:
             return ar.NO_OPEN_WIRD, False
-        if task.status is TaskStatus.CLOSED:
+        if task.is_closed:
             return ar.WIRD_CLOSED, False
 
         subs = SubscriberRepo(session)

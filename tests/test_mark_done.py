@@ -116,6 +116,42 @@ class TestRecordCompletion:
         assert await TaskRepo(session).has_done(task.id, 1)
 
 
+class TestClosedWird:
+    """The status column is a plain string, and the guards have to survive that.
+
+    SQLAlchemy stores `TaskStatus` in a `String` column and hands back a bare
+    `str` when the row is loaded in a fresh session — which every job and handler
+    gets. An identity check against the enum is therefore False even for a closed
+    wird, so these tests set the status the way the database returns it.
+    """
+
+    async def test_a_closed_wird_reads_as_closed(self, session, task):
+        await TaskRepo(session).close(task.id)
+        task.status = "closed"  # as a row loaded from the database arrives
+        assert task.is_closed
+
+    async def test_pressing_the_button_on_a_closed_wird_is_refused(
+        self, session, deps, group, task
+    ):
+        """Yesterday's wird message is still scrollable in the group.
+
+        Accepting a press on it would credit a day close_day has already counted
+        as missed, inflating the member's total against a streak of zero.
+        """
+        await subscribe(session, 7)
+        await TaskRepo(session).close(task.id)
+        task.status = "closed"
+        await session.flush()
+
+        text, newly = await record_completion(
+            deps, FakeBot(), CHAT, 7, display_name="أحمد", task_id=task.id
+        )
+
+        assert not newly
+        assert text == ar.WIRD_CLOSED
+        assert await TaskRepo(session).done_count(task.id) == 0
+
+
 class TestMessageRefresh:
     async def test_message_is_edited_with_the_finisher(self, session, deps, task):
         await subscribe(session, 1, 2)

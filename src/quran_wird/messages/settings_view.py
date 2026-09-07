@@ -175,7 +175,8 @@ def pages(group: Group) -> tuple[str, InlineKeyboardMarkup]:
         f"القيمة الآن: <b>{ar_num(group.pages_per_day)}</b> صفحة في اليوم\n"
         f"بهذا المعدّل تكتمل الختمة في نحو "
         f"<b>{ar_num(days_to_finish(group.pages_per_day))}</b> يوم قراءة.\n\n"
-        "<i>فوق عشر صفحات يُقسَّم الألبوم إلى أكثر من رسالة.</i>"
+        "<i>فوق عشر صفحات يُقسَّم الألبوم إلى أكثر من رسالة.</i>\n"
+        "<i>وإن كان ورد اليوم قد أُرسل، فالأمر /sendnow يعرض استبداله بالعدد الجديد.</i>"
     )
     rows = [_stepper("pages", f"{ar_num(group.pages_per_day)} صفحة"), _back()]
     return text, InlineKeyboardMarkup(rows)

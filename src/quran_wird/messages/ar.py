@@ -61,7 +61,7 @@ HELP = (
     "<b>للمشرفين</b>\n"
     "/settings — ضبط الصفحات والمواعيد والتذكيرات\n"
     "/setpage — تعيين الصفحة الحالية (للانضمام إلى ختمة بدأت قبل البوت)\n"
-    "/sendnow — إرسال ورد اليوم الآن\n\n"
+    "/sendnow — إرسال ورد اليوم الآن، أو استبداله إن كان قد أُرسل\n\n"
     "الاشتراك اختياري، ولا يُنادى في التذكير إلا المشتركون."
 )
 
@@ -107,6 +107,30 @@ PAGES_MISSING = (
     "صور المصحف غير مبنيّة على الخادم بعد، فتعذّر إرسال الورد.\n"
     "على مشغّل البوت تنفيذ: <code>uv run scripts/build_pages.py</code>"
 )
+
+# --------------------------------------------------- replacing today's wird
+
+# The bot posts a wird the moment it joins, guessing at page one. A group
+# resuming its own khatmah corrects that with /setpage, and these are what let
+# the correction reach today's wird instead of only tomorrow's.
+
+REPLACE_OFFER = (
+    "☝️ <b>ورد اليوم أُرسل بالفعل</b> — {current}.\n"
+    "وبحسب الإعداد الجديد يصير ورد اليوم: <b>{proposed}</b>."
+)
+
+REPLACE_OFFER_DONE = (
+    "⚠️ سجّل <b>{count}</b> من الأعضاء إتمام الورد القديم، "
+    "وسيسقط تسجيلهم عليه — وسلاسلهم محفوظة كما هي."
+)
+
+REPLACE_OFFER_HINT = "<i>سأحذف الورد القديم من المجموعة وأرسل الجديد مكانه.</i>"
+
+REPLACE_DONE = "🔄 استبدلتُ ورد اليوم."
+
+REPLACE_DONE_NOTICE = "🔄 <b>استُبدل ورد اليوم</b> — وهذا هو الورد الصحيح 👇"
+
+REPLACE_GONE = "لم يعد بالإمكان استبدال ورد اليوم — إمّا استُبدل قبل قليل، أو أُغلق يومه."
 
 # ------------------------------------------------------------------ reports
 

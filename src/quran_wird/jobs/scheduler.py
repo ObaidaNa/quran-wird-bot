@@ -51,6 +51,17 @@ def clear_group_jobs(job_queue: JobQueue, chat_id: int) -> None:
         job.schedule_removal()
 
 
+def clear_task_reminders(job_queue: JobQueue, chat_id: int, task_id: int) -> None:
+    """Drop one wird's reminders, leaving the group's daily jobs alone.
+
+    Used when a wird is withdrawn and replaced. `send_reminder` would find no
+    task and send nothing anyway, but a long-running process should not carry
+    jobs for a wird that no longer exists.
+    """
+    for job in job_queue.jobs(pattern=f"^{REMIND_JOB}:{chat_id}:{task_id}:"):
+        job.schedule_removal()
+
+
 def schedule_group(job_queue: JobQueue, group: Group) -> None:
     """(Re)schedule every job for one group."""
     clear_group_jobs(job_queue, group.chat_id)

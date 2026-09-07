@@ -13,14 +13,15 @@ from telegram.ext import ContextTypes
 
 from ..content.base import BuildContext
 from ..content.quran_pages import provider as quran_pages
-from ..db.models import DailyTask, Group, TaskStatus
+from ..db.models import DailyTask, Group
 from ..db.repo import GroupRepo, MediaRepo, MushafRepo, SubscriberRepo, TaskRepo
 from ..db.session import session_scope
 from ..deps import Deps, get_deps
 from ..domain.progress import next_range
-from ..domain.schemas import PageRange, WirdView
+from ..domain.schemas import PageRange, ReplaceOffer, WirdView
 from ..messages import render
 from ..messages.phrases import phrases
+from ..tg.cleanup import delete_messages
 from ..tg.failures import deactivate_if_forbidden
 from ..tg.media import PageImageMissing, send_pages
 from ..tg.pinning import pin
@@ -155,6 +156,82 @@ async def send_wird(
     return task_id
 
 
+async def replaceable_today(deps: Deps, chat_id: int) -> ReplaceOffer | None:
+    """Today's wird beside the one the group's current settings would send.
+
+    Returns None when there is nothing an admin could usefully replace: no wird
+    went out today, or the day has already closed. A closed day has been counted
+    — streaks moved, pages advanced — so its wird is history rather than a
+    setting that can still be corrected.
+    """
+    async with session_scope(deps.sessions) as session:
+        group = await GroupRepo(session).get(chat_id)
+        if group is None or not group.is_active:
+            return None
+
+        tasks = TaskRepo(session)
+        task = await tasks.get_by_date(chat_id, local_today(group))
+        if task is None or task.is_closed:
+            return None
+
+        return ReplaceOffer(
+            task_id=task.id,
+            current=PageRange(start=task.page_start, end=task.page_end),
+            proposed=next_range(group.current_page, group.pages_per_day),
+            done_count=await tasks.done_count(task.id),
+        )
+
+
+async def replace_wird(bot: Bot, deps: Deps, chat_id: int, task_id: int) -> int | None:
+    """Withdraw today's wird and send the one the settings now describe.
+
+    The wird sent the moment the bot joins is a guess at page one, and a group
+    resuming its own khatmah corrects that with `/setpage`. Without this the
+    correction only took effect the next morning, so the group spent its first
+    day with the wrong pages pinned above it.
+
+    Returns the new task id, or None when there is nothing left to correct: the
+    day has closed, the wird has already been replaced, or today's pages are
+    what the settings ask for. That last check is what makes a second press
+    harmless — once the swap has happened the offer describes no change, so two
+    admins pressing the same button do not post the wird twice.
+
+    The order matters: the replacement is sent before the old messages are
+    deleted, so a send that fails leaves the group with the wird it already had
+    rather than with nothing at all.
+    """
+    async with session_scope(deps.sessions) as session:
+        group = await GroupRepo(session).get(chat_id)
+        if group is None or not group.is_active:
+            return None
+
+        tasks = TaskRepo(session)
+        task = await tasks.get(task_id)
+        if (
+            task is None
+            or task.chat_id != chat_id
+            or task.task_date != local_today(group)
+            or task.is_closed
+        ):
+            return None
+
+        proposed = next_range(group.current_page, group.pages_per_day)
+        if (task.page_start, task.page_end) == (proposed.start, proposed.end):
+            log.info("chat %s: task %s already matches the settings", chat_id, task_id)
+            return None
+
+        stale_message_ids = [*(task.album_message_ids or [])]
+        if task.message_id is not None:
+            stale_message_ids.append(task.message_id)
+        await tasks.discard(task_id)
+
+    new_task_id = await send_wird(bot, deps, chat_id, force=True)
+
+    await delete_messages(bot, chat_id, stale_message_ids)
+    log.info("chat %s: replaced task %s with %s", chat_id, task_id, new_task_id)
+    return new_task_id
+
+
 async def job_send_daily(context: ContextTypes.DEFAULT_TYPE) -> None:
     """JobQueue entry point, one per group."""
     chat_id = context.job.chat_id
@@ -188,7 +265,7 @@ async def current_view(deps: Deps, chat_id: int) -> WirdView | None:
     """The view for the group's currently open wird, if there is one."""
     async with session_scope(deps.sessions) as session:
         task = await TaskRepo(session).get_open(chat_id)
-        if task is None or task.status is TaskStatus.CLOSED:
+        if task is None or task.is_closed:
             return None
         return await build_view(session, task)
 

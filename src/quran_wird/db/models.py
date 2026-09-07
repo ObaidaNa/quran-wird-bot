@@ -173,6 +173,17 @@ class DailyTask(Base):
     def page_count(self) -> int:
         return self.page_end - self.page_start + 1
 
+    @property
+    def is_closed(self) -> bool:
+        """Whether this wird's day has been counted.
+
+        `status` is stored as a plain string, so a row loaded in a fresh session
+        hands back `str` rather than the enum — `status is TaskStatus.CLOSED` is
+        False even for a closed wird, which silently disabled every guard that
+        used it. Ask through here instead of comparing the column.
+        """
+        return self.status == TaskStatus.CLOSED
+
 
 class Completion(Base):
     """A member marking one day's wird as read."""

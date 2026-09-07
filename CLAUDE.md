@@ -60,6 +60,11 @@ not fire twice is guarded by a database row instead, and new work must follow su
 - `WeeklyReportRepo.claim` is taken before the board is posted
 - `StatsRepo.record_done` is idempotent per date
 
+`replace_wird` is the one place a task row is deleted rather than guarded. It is
+confined to today's still-open wird, and refuses once the pages already match the
+settings — which is what makes a second press of the same button do nothing, since
+SQLite hands the replacement the rowid the withdrawn wird just gave up.
+
 A group's jobs must also be scheduled the moment it exists — being added and
 `/start` both call `reschedule_chat`. Forgetting this once meant new groups
 received nothing at all until the process restarted.
@@ -84,6 +89,11 @@ is set because SQLite has no full `ALTER TABLE`.
   ten splits across albums. Handled in `tg/media.py`.
 - **Quiet hours wrap midnight**, so `start <= now < end` is wrong. Test fixtures
   that send reminders must disable quiet hours, or the suite fails nightly.
+- **A `StrEnum` column comes back as a plain `str`.** `status`, `advance_rule` and
+  friends are stored in `String` columns, so a row loaded in a fresh session
+  hands back `'closed'`, not `TaskStatus.CLOSED` — `is` comparisons are always
+  False and silently disable the guard around them. This let a member tick a
+  wird whose day had closed. Use `DailyTask.is_closed`, or `==`; never `is`.
 - **`Forbidden` is the one error retrying cannot fix** — it means the bot was
   kicked. Jobs that swallow their own send errors must re-raise it so the group
   can be deactivated.

@@ -170,6 +170,29 @@ class WirdView(BaseModel):
         return len(self.done_names)
 
 
+class ReplaceOffer(BaseModel):
+    """Today's already-sent wird next to the one the settings now describe.
+
+    A group almost never joins the bot at page 1: the wird that goes out the
+    moment the bot is added is a guess, and correcting it with `/setpage` used to
+    leave the group looking at the wrong pages until the next morning. This is
+    what the admin is asked to confirm before that wird is taken back.
+    """
+
+    task_id: int
+    current: PageRange
+    proposed: PageRange
+    done_count: int = 0
+
+    @property
+    def differs(self) -> bool:
+        """Whether replacing would actually change what the group is reading."""
+        return (self.current.start, self.current.end) != (
+            self.proposed.start,
+            self.proposed.end,
+        )
+
+
 class DaySummaryView(BaseModel):
     """Payload for the short report posted when the day closes.
 

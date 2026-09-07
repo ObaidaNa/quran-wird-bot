@@ -89,10 +89,45 @@ class TaskRepo:
 
     async def close(self, task_id: int) -> DailyTask | None:
         task = await self.session.get(DailyTask, task_id)
-        if task is not None and task.status is not TaskStatus.CLOSED:
+        if task is not None and not task.is_closed:
             task.status = TaskStatus.CLOSED
             task.closed_at = utcnow()
         return task
+
+    async def discard(self, task_id: int) -> bool:
+        """Delete a wird and everything recorded against it. Returns whether it existed.
+
+        Only ever used to replace a wird the group has not finished with yet —
+        `close_day` has run for nobody, so no streak or stat depends on it. The
+        completions go with it because they belong to pages the group is no
+        longer reading; the members' streaks are left alone, since they did read
+        what was posted at the time.
+        """
+        task = await self.session.get(DailyTask, task_id)
+        if task is None:
+            return False
+
+        # A later wird may point here as the one it repeats; the foreign key is
+        # enforced, so the pointer has to be cleared before the row goes.
+        for repeat in await self.session.scalars(
+            select(DailyTask).where(DailyTask.is_repeat_of == task_id)
+        ):
+            repeat.is_repeat_of = None
+
+        for log in await self.session.scalars(
+            select(ReminderLog).where(ReminderLog.task_id == task_id)
+        ):
+            await self.session.delete(log)
+        for completion in await self.session.scalars(
+            select(Completion).where(Completion.task_id == task_id)
+        ):
+            await self.session.delete(completion)
+
+        await self.session.delete(task)
+        # Flush so a later get_by_date() in the same session does not hand the
+        # row back from the identity map.
+        await self.session.flush()
+        return True
 
     async def list_between(self, chat_id: int, start: dt.date, end: dt.date) -> Sequence[DailyTask]:
         """Tasks in an inclusive date window, oldest first — used by the weekly report."""

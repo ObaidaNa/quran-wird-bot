@@ -7,8 +7,9 @@ from collections.abc import Sequence
 
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup
 
-from ..domain.schemas import TOTAL_PAGES, DaySummaryView, WirdView
+from ..domain.schemas import TOTAL_PAGES, DaySummaryView, ReplaceOffer, WirdView
 from ..tg.mentions import mention, safe_name
+from . import ar
 from .phrases import phrases
 
 _ARABIC_DIGITS = str.maketrans("0123456789", "٠١٢٣٤٥٦٧٨٩")
@@ -45,6 +46,7 @@ MAX_NAMES_SHOWN = 6
 
 CB_DONE = "done"
 CB_WHO = "who"
+CB_REPLACE = "redo"
 
 
 def ar_num(value: int | str) -> str:
@@ -121,6 +123,32 @@ def wird_keyboard(task_id: int) -> InlineKeyboardMarkup:
             ]
         ]
     )
+
+
+def replace_offer(offer: ReplaceOffer) -> str:
+    """Ask an admin to confirm taking today's wird back and sending the new one."""
+    parts = [
+        ar.REPLACE_OFFER.format(
+            current=pages_label(offer.current.start, offer.current.end),
+            proposed=pages_label(offer.proposed.start, offer.proposed.end),
+        )
+    ]
+    if offer.done_count:
+        parts.append(ar.REPLACE_OFFER_DONE.format(count=ar_num(offer.done_count)))
+    parts.append(ar.REPLACE_OFFER_HINT)
+    return "\n\n".join(parts)
+
+
+def replace_keyboard(task_id: int) -> InlineKeyboardMarkup:
+    """The single confirm button under a replacement offer.
+
+    The task id travels in the payload so a button pressed long after the fact —
+    a second admin, or the next day — is recognised as stale rather than acted on.
+    """
+    button = InlineKeyboardButton(
+        "🔄 نعم، استبدل ورد اليوم", callback_data=f"{CB_REPLACE}:{task_id}"
+    )
+    return InlineKeyboardMarkup([[button]])
 
 
 def khatmah_progress_line(current_page: int, khatmah_number: int) -> str:

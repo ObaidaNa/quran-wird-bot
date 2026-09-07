@@ -10,7 +10,7 @@ from telegram import Bot
 from telegram.error import Forbidden, TelegramError
 from telegram.ext import ContextTypes, JobQueue
 
-from ..db.models import DailyTask, Group, TaskStatus
+from ..db.models import DailyTask, Group
 from ..db.repo import GroupRepo, StatsRepo, SubscriberRepo, TaskRepo
 from ..db.session import session_scope
 from ..deps import Deps, get_deps
@@ -82,7 +82,7 @@ async def send_reminder(bot: Bot, deps: Deps, chat_id: int, task_id: int, seq: i
 
         tasks = TaskRepo(session)
         task = await tasks.get(task_id)
-        if task is None or task.chat_id != chat_id or task.status is TaskStatus.CLOSED:
+        if task is None or task.chat_id != chat_id or task.is_closed:
             return 0
 
         local_now = dt.datetime.now(ZoneInfo(group.timezone)).time()

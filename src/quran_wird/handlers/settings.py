@@ -27,7 +27,8 @@ from ..deps import Deps, get_deps
 from ..domain.schemas import GroupSettingsPatch
 from ..domain.settings import NUMERIC, TIME_ATTRS, bump_int, bump_time, parse_page, toggle_weekday
 from ..jobs.scheduler import reschedule_chat
-from ..messages import ar
+from ..jobs.send_daily import replaceable_today
+from ..messages import ar, render
 from ..messages import settings_view as view
 from ..tg.guards import is_group_admin
 
@@ -294,14 +295,25 @@ async def setpage_command(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
         await groups.set_current_page(chat.id, page)
         info = await MushafRepo(session).page(page)
 
-    await message.reply_text(
-        ar.SETPAGE_OK.format(
-            page=view.ar_num(page),
-            juz=view.ar_num(info.juz) if info else "—",
-            surahs=info.surah_names if info else "",
-        )
+    reply = ar.SETPAGE_OK.format(
+        page=view.ar_num(page),
+        juz=view.ar_num(info.juz) if info else "—",
+        surahs=info.surah_names if info else "",
     )
     log.info("chat %s: current page set to %s", chat.id, page)
+
+    # The common case for /setpage is a group correcting the wird the bot posted
+    # the moment it joined. Telling them only about tomorrow leaves them a whole
+    # day on the wrong pages, so today's wird is offered for replacement here.
+    offer = await replaceable_today(deps, chat.id)
+    if offer is None or not offer.differs:
+        await message.reply_text(reply)
+        return
+
+    await message.reply_text(
+        f"{reply}\n\n{render.replace_offer(offer)}",
+        reply_markup=render.replace_keyboard(offer.task_id),
+    )
 
 
 def register(app: Application) -> None:
