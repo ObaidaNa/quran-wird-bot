@@ -63,6 +63,7 @@ async def record_completion(
     """
     everyone_done = False
     nudge_name: str | None = None
+    caught_up = False
 
     async with session_scope(deps.sessions) as session:
         tasks = TaskRepo(session)
@@ -88,6 +89,11 @@ async def record_completion(
         # expected daily, so counting them would make "missed a day" meaningless.
         if is_subscriber:
             await StatsRepo(session).record_done(chat_id, user_id, task.task_date)
+            # Pages read with the group drop out of the member's catch-up debt
+            # — a repeated wird, or the group lapping them in a new khatmah.
+            caught_up = await _reconcile_catchup(
+                session, chat_id, user_id, task, display_name=display_name
+            )
         else:
             nudges = NudgeRepo(session)
             if await nudges.due(chat_id, user_id):
@@ -110,7 +116,46 @@ async def record_completion(
         except TelegramError:
             log.exception("chat %s: could not send the subscribe invitation", chat_id)
 
+    if caught_up:
+        from ..jobs.catchup import announce_caught_up
+
+        await announce_caught_up(bot, chat_id, display_name)
+
     return phrases.done.pick(chat_id), True
+
+
+async def _reconcile_catchup(
+    session, chat_id: int, user_id: int, task: DailyTask, *, display_name: str
+) -> bool:
+    """Fold a group completion into the member's catch-up plan, if any.
+
+    Pages read with the group are no longer owed: they drop out of the queue,
+    and any old missed day they complete is repaired. Returns True when the
+    debt hit zero here, so the caller can announce it.
+    """
+    from ..db.repo import CatchupRepo
+    from ..domain import catchup as policy
+    from ..jobs.catchup import reconcile_plan
+
+    plan = await CatchupRepo(session).get(chat_id, user_id)
+    if plan is None:
+        return False
+    queue = policy.drop_pages(plan.queue, task.page_start, task.page_end)
+    if queue == [list(r) for r in plan.queue]:
+        return False
+    plan.queue = queue
+    # A group reading may supersede all or part of the piece already sent.
+    # Retire its button; unread pages will be offered as a fresh piece.
+    if plan.pending_start is not None and (
+        plan.pending_start <= task.page_end and task.page_start <= plan.pending_end
+    ):
+        plan.pending_start = None
+        plan.pending_end = None
+        plan.pending_message_id = None
+        plan.pending_token += 1
+    if queue:
+        plan.cursor = queue[0][0]
+    return await reconcile_plan(session, plan, display_name=display_name)
 
 
 async def on_done_button(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:

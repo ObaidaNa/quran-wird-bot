@@ -51,6 +51,18 @@ class TaskStatus(enum.StrEnum):
 class CompletionSource(enum.StrEnum):
     BUTTON = "button"
     COMMAND = "command"
+    # Read later, privately, through the catch-up plan (docs/CATCHUP.md).
+    CATCHUP = "catchup"
+
+
+class CatchupState(enum.StrEnum):
+    """Where a member's private catch-up plan stands."""
+
+    ACTIVE = "active"  # pieces and nudges go out
+    PAUSED = "paused"  # silent; weekly probes only if the bot paused it
+    DORMANT = "dormant"  # probes exhausted; only the member can revive it
+    BLOCKED = "blocked"  # the member blocked the bot in private chat
+    CAUGHT_UP = "caught_up"  # no debt left; new misses reactivate it
 
 
 class BadgeKind(enum.StrEnum):
@@ -202,6 +214,22 @@ class Completion(Base):
     task: Mapped[DailyTask] = relationship(back_populates="completions")
 
 
+class TaskMiss(Base):
+    """A missed day actually counted while this member was subscribed.
+
+    The old aggregate alone cannot distinguish days missed from days absent.
+    Retain individual outcomes so a later repair changes only its own day.
+    """
+
+    __tablename__ = "task_misses"
+
+    task_id: Mapped[int] = mapped_column(
+        ForeignKey("daily_tasks.id", ondelete="CASCADE"), primary_key=True
+    )
+    user_id: Mapped[int] = mapped_column(primary_key=True, autoincrement=False)
+    repaired_at: Mapped[dt.datetime | None] = mapped_column(DateTime)
+
+
 class UserStats(Base):
     """Per-member stats within one group; memberships in several groups stay separate."""
 
@@ -280,6 +308,76 @@ class PageMedia(Base):
     file_id: Mapped[str] = mapped_column(String(256))
     file_unique_id: Mapped[str | None] = mapped_column(String(128))
     uploaded_at: Mapped[dt.datetime] = mapped_column(DateTime, default=utcnow)
+
+
+# ===================== Private catch-up plans (التدارك) =====================
+
+
+class CatchupPlan(Base):
+    """One member's private plan to read what they missed, in one group.
+
+    The debt is page ranges of the closed wirds they never marked done, oldest
+    first, plus the ids of those tasks so each can be repaired (a late
+    completion) once none of its pages remain owed. All reading positions are
+    whole mushaf page numbers; no verse text is reconstructed.
+
+    `pending_*` describe the piece currently out for delivery; they double as
+    the idempotency claim: the tick moves `last_sent_at` before sending, so a
+    replayed tick finds the piece already claimed.
+    """
+
+    __tablename__ = "catchup_plans"
+
+    chat_id: Mapped[int] = mapped_column(
+        ForeignKey("groups.chat_id", ondelete="CASCADE"), primary_key=True
+    )
+    user_id: Mapped[int] = mapped_column(primary_key=True, autoincrement=False)
+
+    state: Mapped[CatchupState] = mapped_column(String(16), default=CatchupState.ACTIVE)
+    # Remaining debt as [[page_start, page_end], ...], oldest first, merged.
+    queue: Mapped[list[list[int]]] = mapped_column(JSON, default=list)
+    # Closed task ids the debt came from, oldest first; repaired in order.
+    debt_tasks: Mapped[list[int]] = mapped_column(JSON, default=list)
+    cursor: Mapped[int] = mapped_column(default=1)  # next page to read
+
+    dose: Mapped[int] = mapped_column(default=1)  # whole pages per piece
+    success_streak: Mapped[int] = mapped_column(default=0)
+    tone_index: Mapped[int] = mapped_column(default=0)  # rotates nudge tone pools
+    ignored_streak: Mapped[int] = mapped_column(default=0)  # nudges since last done
+    done_hours: Mapped[list[int]] = mapped_column(JSON, default=list)  # local hours
+
+    pending_start: Mapped[int | None] = mapped_column()  # whole-page range sent
+    pending_end: Mapped[int | None] = mapped_column()
+    pending_token: Mapped[int] = mapped_column(default=0)  # rejects old piece buttons
+    pending_message_id: Mapped[int | None] = mapped_column()
+    last_sent_at: Mapped[dt.datetime | None] = mapped_column(DateTime)
+    last_done_at: Mapped[dt.datetime | None] = mapped_column(DateTime)
+
+    paused_by_user: Mapped[bool] = mapped_column(Boolean, default=False)
+    probe_count: Mapped[int] = mapped_column(default=0)  # weekly probes while paused
+    last_probe_at: Mapped[dt.datetime | None] = mapped_column(DateTime)
+
+    enrolled_at: Mapped[dt.datetime] = mapped_column(DateTime, default=utcnow)
+    caught_up_at: Mapped[dt.datetime | None] = mapped_column(DateTime)
+
+
+class CatchupEvent(Base):
+    """The plan's history: what was sent, done, and learned, and when.
+
+    This is both the audit log and the learning data — the weekly report's
+    catch-up section and the best-hour estimate are both read out of it.
+    """
+
+    __tablename__ = "catchup_events"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    chat_id: Mapped[int] = mapped_column(index=True)
+    user_id: Mapped[int] = mapped_column(index=True)
+    kind: Mapped[str] = mapped_column(String(16))  # CatchupEventKind values
+    at: Mapped[dt.datetime] = mapped_column(DateTime, default=utcnow)
+    # For piece events: the whole pages sent or completed.
+    page_start: Mapped[int | None] = mapped_column()
+    page_end: Mapped[int | None] = mapped_column()
 
 
 # ==================== Mushaf reference index (read-only) ====================

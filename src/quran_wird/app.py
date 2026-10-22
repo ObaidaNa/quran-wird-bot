@@ -12,12 +12,13 @@ from telegram.ext import AIORateLimiter, Application, ApplicationBuilder, Defaul
 from .config import Settings
 from .db.session import create_engine_async, session_factory
 from .deps import DEPS_KEY, Deps
-from .handlers import errors, lifecycle, mark_done, owner, stats, subscribe, wird
+from .handlers import catchup, errors, lifecycle, mark_done, owner, stats, subscribe, wird
 
 # Aliased: `settings` is also the name of the Settings object every function
 # here takes, and the parameter would shadow the module.
 from .handlers import settings as settings_panel
 from .jobs.backup import schedule_backup
+from .jobs.catchup import schedule_tick
 from .jobs.scheduler import reschedule_all
 from .messages import ar
 
@@ -37,6 +38,8 @@ async def _post_init(app: Application) -> None:
     await reschedule_all(app)
     if app.job_queue is not None:
         schedule_backup(app.job_queue, app.bot_data[DEPS_KEY].settings)
+        # The catch-up tick is global — one job walks every member's plan.
+        schedule_tick(app.job_queue)
 
 
 async def _post_shutdown(app: Application) -> None:
@@ -76,6 +79,7 @@ def build_application(settings: Settings) -> Application:
     subscribe.register(app)
     wird.register(app)
     mark_done.register(app)
+    catchup.register(app)
     settings_panel.register(app)
     stats.register(app)
     owner.register(app)

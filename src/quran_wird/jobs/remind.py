@@ -73,7 +73,9 @@ def schedule_task_reminders(
     return scheduled
 
 
-async def send_reminder(bot: Bot, deps: Deps, chat_id: int, task_id: int, seq: int) -> int:
+async def send_reminder(
+    bot: Bot, deps: Deps, chat_id: int, task_id: int, seq: int, *, bot_username: str | None = None
+) -> int:
     """Send one round of reminders. Returns the number of messages sent."""
     async with session_scope(deps.sessions) as session:
         group = await GroupRepo(session).get(chat_id)
@@ -118,18 +120,20 @@ async def send_reminder(bot: Bot, deps: Deps, chat_id: int, task_id: int, seq: i
                 chat_id=chat_id,
                 pages=(task.page_start, task.page_end),
                 batch=batch,
-                missed=missed,
                 done_names=done_names,
                 pending_total=len(pending),
                 subscriber_total=len(subscribers),
             )
             for batch in chunked(pending, group.mentions_per_message)
         ]
+        # Members with real dereliction get a door to the private catch-up
+        # plan. One generic deep link serves them all; enrollment checks debt.
+        keyboard = catchup_keyboard(bot_username, chat_id) if missed else None
         message_ids: list[int] = []
 
     for text in batches:
         try:
-            message = await bot.send_message(chat_id, text)
+            message = await bot.send_message(chat_id, text, reply_markup=keyboard)
             message_ids.append(message.message_id)
         except Forbidden:
             # The bot is no longer in the group; the caller deactivates it
@@ -142,12 +146,39 @@ async def send_reminder(bot: Bot, deps: Deps, chat_id: int, task_id: int, seq: i
     return len(message_ids)
 
 
+def catchup_keyboard(bot_username: str | None, chat_id: int):
+    """The deep-link button into private enrollment, when the username is known."""
+    if not bot_username:
+        return None
+    from telegram import InlineKeyboardButton, InlineKeyboardMarkup
+
+    from ..messages import ar
+
+    return InlineKeyboardMarkup(
+        [
+            [
+                InlineKeyboardButton(
+                    ar.CATCHUP_JOIN_BUTTON,
+                    url=f"https://t.me/{bot_username}?start=cu_{chat_id}",
+                )
+            ]
+        ]
+    )
+
+
 async def job_remind(context: ContextTypes.DEFAULT_TYPE) -> None:
     job = context.job
     data = job.data or {}
     deps = get_deps(context)
     try:
-        await send_reminder(context.bot, deps, job.chat_id, data["task_id"], data["seq"])
+        await send_reminder(
+            context.bot,
+            deps,
+            job.chat_id,
+            data["task_id"],
+            data["seq"],
+            bot_username=getattr(context.bot, "username", None),
+        )
     except TelegramError as exc:
         if not await deactivate_if_forbidden(deps, job.chat_id, exc):
             log.exception("chat %s: reminder job failed", job.chat_id)

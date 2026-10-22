@@ -16,6 +16,7 @@ from ..jobs.scheduler import reschedule_chat
 from ..jobs.send_daily import schedule_reminders_for, send_wird
 from ..messages import ar
 from ..tg.media import PageImageMissing
+from . import catchup as catchup_handler
 
 log = logging.getLogger(__name__)
 
@@ -125,6 +126,11 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         return
 
     if chat.type not in GROUP_TYPES:
+        # A deep-link payload (t.me/bot?start=cu_<chat>) enters the catch-up
+        # plan; a bare private /start gets the usual greeting.
+        payload = context.args[0] if context.args else ""
+        if payload and await catchup_handler.handle_start_payload(update, context, payload):
+            return
         await message.reply_text(ar.START_PRIVATE)
         return
 

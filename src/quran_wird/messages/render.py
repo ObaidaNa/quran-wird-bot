@@ -258,7 +258,6 @@ def reminder_message(
     chat_id: int,
     pages: tuple[int, int],
     batch: Sequence,
-    missed: dict[int, int],
     done_names: Sequence[str],
     pending_total: int,
     subscriber_total: int,
@@ -285,17 +284,6 @@ def reminder_message(
         )
     else:
         parts.append(f"\n⏳ لم يُنجز أحد بعد من {ar_num(subscriber_total)} — كن أوّلهم 🌿")
-
-    # The تقصير notice is per person, so it goes on its own line under the batch.
-    notices = [
-        f"🔸 {safe_name(m.display_name)}: "
-        + phrases.missed.pick(chat_id).format(n=ar_num(missed[m.user_id]))
-        for m in batch
-        if m.user_id in missed
-    ]
-    if notices:
-        parts.append("")
-        parts.extend(notices)
 
     return "\n".join(parts)
 

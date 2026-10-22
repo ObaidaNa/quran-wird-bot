@@ -1,5 +1,6 @@
 """Repository layer: all database access lives behind these classes."""
 
+from .catchup import CatchupEventKind, CatchupRepo
 from .groups import GroupRepo
 from .media import MediaRepo
 from .mushaf import MushafRepo
@@ -11,6 +12,8 @@ from .tasks import TaskRepo
 
 __all__ = [
     "BadgeRepo",
+    "CatchupEventKind",
+    "CatchupRepo",
     "GroupRepo",
     "MediaRepo",
     "MushafRepo",

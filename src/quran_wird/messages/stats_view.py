@@ -54,7 +54,13 @@ def place(index: int) -> str:
 # ------------------------------------------------------------------- /me
 
 
-def member_report(progress: MemberProgress, *, subscribed: bool, badges: int = 0) -> str:
+def member_report(
+    progress: MemberProgress,
+    *,
+    subscribed: bool,
+    badges: int = 0,
+    catchup_left: int | None = None,
+) -> str:
     """One member's own record, replied to them in the group."""
     parts = [f"📊 <b>{safe_name(progress.display_name)}</b>", ""]
 
@@ -70,6 +76,10 @@ def member_report(progress: MemberProgress, *, subscribed: bool, badges: int = 0
         parts.append(f"🏆 أطول سلسلة لك: <b>{best}</b>")
     if progress.total_missed:
         parts.append(f"⏳ فاتك: {counted(progress.total_missed, NOUNS['day'])}")
+    if catchup_left:
+        parts.append(
+            f"🌱 التدارك: بقي {counted(catchup_left, NOUNS['page'])} — تابع في الخاص عبر /catchup"
+        )
     if badges:
         parts.append(f"🏅 <b>{counted(badges, NOUNS['perfect_week'])}</b> بلا تخلّف")
     if progress.last_done_date:
@@ -156,6 +166,7 @@ def weekly_report(
     khatmah_number: int,
     top_streak: MemberProgress | None,
     weeks_left: int | None,
+    catchup: list[tuple[str, int]] | None = None,
 ) -> str:
     """The Friday honors board, following the approved template."""
     done = current_page - 1
@@ -203,6 +214,11 @@ def weekly_report(
     if weeks_left:
         weeks = counted(weeks_left, NOUNS["week"], oblique=True)
         parts.append(f"\n⏳ على هذا المعدّل نختم بإذن الله خلال {about(weeks_left)}{weeks}")
+
+    if catchup:
+        parts.append("\n🌱 <b>تداركوا ما فاتهم هذا الأسبوع:</b>")
+        for name, pages in catchup[:MAX_BOARD_NAMES]:
+            parts.append(f"   • {safe_name(name)} — {counted(pages, NOUNS['page'])}")
 
     parts.append(f"\n{phrases.weekly_closer.pick(chat_id)}")
     return "\n".join(parts)

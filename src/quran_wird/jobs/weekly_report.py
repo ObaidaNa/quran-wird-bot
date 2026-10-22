@@ -20,6 +20,7 @@ from telegram.ext import ContextTypes
 from ..db.models import BadgeKind, Group
 from ..db.repo import (
     BadgeRepo,
+    CatchupRepo,
     GroupRepo,
     StatsRepo,
     SubscriberRepo,
@@ -81,6 +82,24 @@ async def render_week(session: AsyncSession, group: Group, start: dt.date, end: 
             top_progress = MemberProgress.model_validate(top)
             top_progress.display_name = subscriber.display_name
 
+    # Catch-up reading is group-worthy too: the week remembers who climbed
+    # back, in pages, beside those who never fell.
+    tz = ZoneInfo(group.timezone)
+    week_start_utc = dt.datetime.combine(start, dt.time.min, tzinfo=tz).astimezone(dt.UTC)
+    week_end_utc = dt.datetime.combine(end, dt.time.max, tzinfo=tz).astimezone(dt.UTC)
+    caught_pages = await CatchupRepo(session).weekly_progress(
+        group.chat_id,
+        week_start_utc.replace(tzinfo=None),
+        week_end_utc.replace(tzinfo=None),
+    )
+    names = {
+        s.user_id: s.display_name for s in await SubscriberRepo(session).list_active(group.chat_id)
+    }
+    catchup = [
+        (names[user_id], len(pages)) for user_id, pages in caught_pages.items() if user_id in names
+    ]
+    catchup.sort(key=lambda entry: -entry[1])
+
     return view.weekly_report(
         chat_id=group.chat_id,
         week_start=start,
@@ -90,6 +109,7 @@ async def render_week(session: AsyncSession, group: Group, start: dt.date, end: 
         khatmah_number=group.khatmah_number,
         top_streak=top_progress,
         weeks_left=weeks_to_finish(group.current_page, summary.pages_read),
+        catchup=catchup,
     )
 
 

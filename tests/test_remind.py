@@ -236,15 +236,17 @@ class TestQuietHoursSkip:
 
 
 class TestMissedNotices:
-    async def test_notice_appears_past_the_threshold(self, session, deps, task):
+    async def test_debt_offers_private_help_without_personal_admonitions(self, session, deps, task):
         await subscribe(session, "أحمد")
         stats = await StatsRepo(session).get_or_create(CHAT, 1)
         stats.consecutive_missed = MISSED_NOTICE_THRESHOLD
         await session.flush()
 
         bot = FakeBot()
-        await send_reminder(bot, deps, CHAT, task.id, 1)
-        assert "🔸" in bot.sent_texts[0]
+        await send_reminder(bot, deps, CHAT, task.id, 1, bot_username="wird_bot")
+        assert "🔸" not in bot.sent_texts[0]
+        button = bot.messages[0].reply_markup.inline_keyboard[0][0]
+        assert button.url == f"https://t.me/wird_bot?start=cu_{CHAT}"
 
     async def test_a_single_missed_day_is_not_nagged(self, session, deps, task):
         await subscribe(session, "أحمد")
@@ -262,7 +264,7 @@ class TestMissedNotices:
         await send_reminder(bot, deps, CHAT, task.id, 1)
         assert "🔸" not in bot.sent_texts[0]
 
-    async def test_notice_only_for_the_member_it_concerns(self, session, deps, task):
+    async def test_one_motivation_per_message_not_one_per_member(self, session, deps, task):
         await subscribe(session, "أحمد", "سارة")
         stats = await StatsRepo(session).get_or_create(CHAT, 2)
         stats.consecutive_missed = 4
@@ -271,5 +273,9 @@ class TestMissedNotices:
         bot = FakeBot()
         await send_reminder(bot, deps, CHAT, task.id, 1)
         text = bot.sent_texts[0]
-        assert text.count("🔸") == 1
-        assert "سارة" in text.split("🔸")[1]
+        from quran_wird.messages.phrases import REMINDER_FIRST
+
+        assert sum(phrase in text for phrase in REMINDER_FIRST) == 1
+        assert "🔸" not in text
+        assert text.count("سارة") == 1
+        assert text.count("أحمد") == 1

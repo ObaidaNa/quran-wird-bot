@@ -40,9 +40,9 @@ idempotent; `--force` rebuilds existing images.
 
 ## Arabic text
 
-The phrase pools in `messages/phrases.py` are reviewed and approved (docs/PLAN.md
-§7); three reviewed phrases were rejected and a test asserts they stay out. Do not
-add, remove or reword a phrase without asking.
+The phrase pools in `messages/phrases.py` are reviewed and approved (`docs/PLAN.md`
+§7 and `docs/PHRASES-CATCHUP.md`); three reviewed phrases were rejected and a test
+asserts they stay out. Do not add, remove or reword a phrase without asking.
 
 Counts must agree with their noun: Arabic changes the noun's form with the
 number, so «٩ مشتركًا» is as wrong as "9 subscriber". Build any counted phrase
@@ -61,8 +61,11 @@ reads well. It cannot be reviewed in a terminal.
 ## Idempotency is the restart strategy
 
 Jobs live only in memory and are rebuilt from the database on startup
-(`jobs/scheduler.reschedule_all`), so restarting is always safe. Anything that must
-not fire twice is guarded by a database row instead, and new work must follow suit:
+(`jobs/scheduler.reschedule_all`). Durable database claims guard automatic attempts
+against replay, and new work must follow suit. Telegram cannot guarantee exactly-once
+delivery: claiming before sending favors at-most-once automatic attempts, so a crash
+after the claim can leave a message unsent. A member can explicitly request a resend
+of their catch-up piece.
 
 - `send_wird` refuses a second wird for the same `task_date`
 - `TaskRepo.log_reminder(task_id, seq)` is claimed *before* sending
@@ -116,6 +119,40 @@ answers nobody, which is what keeps a fork from leaking its numbers. Ownership i
 re-checked on every button press, because the panel is a message and a message
 can be forwarded. Aggregates live in `db/repo/owner.py`; nothing there is ever
 shown inside a group.
+
+## The catch-up plan
+
+Private catch-up (`docs/PLAN.md` §13) lets a subscriber read missed pages in
+private, in adaptive pieces. Its rules live in `domain/catchup.py` (pure), the
+plan rows in `catchup_plans`/`catchup_events`, the driving job is one global
+tick (`jobs/catchup.py`, 30 min), and the private handlers are
+`handlers/catchup.py`. Notes that cost thinking:
+
+- **`task_misses` records actual counted misses.** Repair that specific row
+  once; never decrement an arbitrary historical aggregate for an absent day.
+  Legacy migration can only infer old debt up to the saved missed total,
+  since earlier versions did not keep subscription intervals.
+
+- **The queue holds unread pages only; the cursor is a page number.** Subtract
+  only pages explicitly completed, never everything numerically before the
+  cursor: a khatmah rollover can add lower page numbers while higher ones are
+  still pending. A missed day is repaired only when none of its pages remain.
+- **Claim before send, per plan, inside its own session** — one member's
+  `Forbidden` must not roll back forty other plans' claims.
+- **Quran reading content is original mushaf photos only.** Never type or
+  reconstruct ayah text. Pieces are whole pages: start/minimum one, maximum three;
+  grow by one after three successful pieces, shrink by one after an ignored nudge.
+  The next automatic piece waits 75 minutes (checked by the 30-minute tick); the
+  member can request it now. Seven ignored nudges auto-pause; four unanswered
+  weekly probes make the plan dormant.
+- **`Forbidden` in a private chat blocks the plan, never the group.** The
+  group-deactivation rule applies to group sends only.
+- **A plan revives on any sign of life** — a button, `/catchup`, or a deep
+  link — including from DORMANT.
+- **Catch-up phrases are approved** in `docs/PHRASES-CATCHUP.md`; existing approved
+  phrase pools remain unchanged. Group reminders use one motivational phrase per
+  message, with mentions and the catch-up deep-link button, not individualized
+  missed-day admonition paragraphs or counts.
 
 ## Storage conventions
 

@@ -21,6 +21,7 @@ class FakeMessage:
     reply_markup: object = None
     # Whatever else the caller passed, so a test can assert on parse_mode.
     kwargs: dict = field(default_factory=dict)
+    chat_id: int | None = None
 
 
 class FakeBot:
@@ -61,11 +62,13 @@ class FakeBot:
     async def send_photo(self, chat_id, photo, caption=None, **kw):
         if self.fail_on_file_id and isinstance(photo, str):
             raise BadRequest("wrong file identifier/HTTP URL specified")
-        self.photos.append({"photo": photo, "caption": caption})
+        self.photos.append({"photo": photo, "caption": caption, "chat_id": chat_id})
         return FakeMessage(self._id(), photo=(FakePhotoSize("FID_SOLO"),))
 
     async def send_message(self, chat_id, text, reply_markup=None, **kw):
-        msg = FakeMessage(self._id(), text=text, reply_markup=reply_markup, kwargs=dict(kw))
+        msg = FakeMessage(
+            self._id(), text=text, reply_markup=reply_markup, kwargs=dict(kw), chat_id=chat_id
+        )
         self.messages.append(msg)
         return msg
 

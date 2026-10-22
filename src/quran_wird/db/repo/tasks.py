@@ -14,6 +14,7 @@ from ..models import (
     DailyTask,
     ReminderLog,
     Subscriber,
+    TaskMiss,
     TaskStatus,
     utcnow,
 )
@@ -139,6 +140,50 @@ class TaskRepo:
                 DailyTask.task_date <= end,
             )
             .order_by(DailyTask.task_date)
+        )
+        return result.all()
+
+    async def missed_closed(
+        self, chat_id: int, user_id: int, *, since: dt.date | None = None
+    ) -> Sequence[DailyTask]:
+        """Closed wirds the member never marked done, oldest first — their debt.
+
+        Only recorded missed outcomes are eligible: unsubscribed days do not
+        create debt. Open tasks are excluded (today is still winnable), and so
+        is anything before `since`. Task
+        ids are globally unique, so the completion subquery needs no chat
+        filter of its own.
+        """
+        done = select(Completion.task_id).where(Completion.user_id == user_id)
+        stmt = (
+            select(DailyTask)
+            .join(TaskMiss, TaskMiss.task_id == DailyTask.id)
+            .where(
+                DailyTask.chat_id == chat_id,
+                TaskMiss.user_id == user_id,
+                TaskMiss.repaired_at.is_(None),
+                DailyTask.status == TaskStatus.CLOSED,
+                DailyTask.id.not_in(done),
+            )
+            .order_by(DailyTask.task_date, DailyTask.id)
+        )
+        if since is not None:
+            stmt = stmt.where(DailyTask.task_date >= since)
+        result = await self.session.scalars(stmt)
+        return result.all()
+
+    async def completed_since(
+        self, chat_id: int, user_id: int, since: dt.date
+    ) -> Sequence[DailyTask]:
+        """Later group readings can cover pages from an earlier missed repeat."""
+        result = await self.session.scalars(
+            select(DailyTask)
+            .join(Completion, Completion.task_id == DailyTask.id)
+            .where(
+                DailyTask.chat_id == chat_id,
+                Completion.user_id == user_id,
+                DailyTask.task_date >= since,
+            )
         )
         return result.all()
 

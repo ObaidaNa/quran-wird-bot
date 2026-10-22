@@ -16,6 +16,7 @@ from telegram.ext import Application, CommandHandler, ContextTypes, filters
 from ..db.models import BadgeKind
 from ..db.repo import (
     BadgeRepo,
+    CatchupRepo,
     GroupRepo,
     StatsRepo,
     SubscriberRepo,
@@ -23,6 +24,7 @@ from ..db.repo import (
 )
 from ..db.session import session_scope
 from ..deps import Deps, get_deps
+from ..domain import catchup as catchup_policy
 from ..domain.schemas import MemberProgress
 from ..domain.weekly import week_bounds, weeks_to_finish
 from ..jobs.send_daily import local_today
@@ -41,6 +43,7 @@ async def member_report(deps: Deps, chat_id: int, user_id: int, *, display_name:
         subscriber = await SubscriberRepo(session).get(chat_id, user_id)
         stats = await StatsRepo(session).get(chat_id, user_id)
         badges = await BadgeRepo(session).count(chat_id, user_id, BadgeKind.PERFECT_WEEK)
+        plan = await CatchupRepo(session).get(chat_id, user_id)
 
         if stats is None and subscriber is None:
             return ar.NO_STATS_YET.format(name=display_name)
@@ -52,8 +55,11 @@ async def member_report(deps: Deps, chat_id: int, user_id: int, *, display_name:
         )
         progress.display_name = subscriber.display_name if subscriber else display_name
         subscribed = subscriber is not None and subscriber.is_active
+        catchup_left = catchup_policy.count_pages(plan.queue) if plan is not None else None
 
-    return view.member_report(progress, subscribed=subscribed, badges=badges)
+    return view.member_report(
+        progress, subscribed=subscribed, badges=badges, catchup_left=catchup_left
+    )
 
 
 async def group_progress(deps: Deps, chat_id: int) -> str | None:

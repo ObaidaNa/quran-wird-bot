@@ -14,14 +14,22 @@ from __future__ import annotations
 import datetime as dt
 import logging
 
+from sqlalchemy.ext.asyncio import AsyncSession
 from telegram import Bot
 from telegram.error import Forbidden, TelegramError
 from telegram.ext import ContextTypes
 
-from ..db.models import Group
-from ..db.repo import GroupRepo, StatsRepo, SubscriberRepo, TaskRepo
+from ..db.models import CatchupState, DailyTask, Group
+from ..db.repo import (
+    CatchupRepo,
+    GroupRepo,
+    StatsRepo,
+    SubscriberRepo,
+    TaskRepo,
+)
 from ..db.session import session_scope
 from ..deps import Deps, get_deps
+from ..domain import catchup as catchup_policy
 from ..domain.progress import advance_from, next_range, should_advance
 from ..domain.schemas import DaySummaryView, PageRange
 from ..messages import render
@@ -42,6 +50,27 @@ def khatmah_days(group: Group, on: dt.date) -> int:
     """
     started = group.khatmah_started_on or group.created_at.date()
     return max(1, (on - started).days + 1)
+
+
+async def _append_debt(session: AsyncSession, chat_id: int, user_id: int, task: DailyTask) -> None:
+    """Add a missed wird to the member's catch-up plan, if they have one.
+
+    Plans are opt-in, so members without one owe nothing here — their debt is
+    computed from scratch if they ever enroll. A plan that was fully caught up
+    wakes back up; its cursor is reset to the new debt, since it used to sit
+    past everything it had read.
+    """
+    repo = CatchupRepo(session)
+    plan = await repo.get(chat_id, user_id)
+    if plan is None or task.id in plan.debt_tasks:
+        return
+
+    plan.queue = catchup_policy.merge_ranges([*plan.queue, [task.page_start, task.page_end]])
+    plan.debt_tasks = sorted([*plan.debt_tasks, task.id])
+    if plan.state == CatchupState.CAUGHT_UP:
+        plan.state = CatchupState.ACTIVE
+        plan.caught_up_at = None
+    plan.cursor = plan.queue[0][0]
 
 
 async def close_day(bot: Bot, deps: Deps, chat_id: int) -> int | None:
@@ -81,7 +110,8 @@ async def close_day(bot: Bot, deps: Deps, chat_id: int) -> int | None:
             # date, so this only catches completions made before they subscribed.
             await stats.record_done(chat_id, member.user_id, task.task_date)
         for member in pending:
-            await stats.record_missed(chat_id, member.user_id)
+            await stats.record_missed(chat_id, member.user_id, task_id=task.id)
+            await _append_debt(session, chat_id, member.user_id, task)
 
         advanced = should_advance(group.advance_rule, len(finishers), len(subscribers))
         khatmah_completed = False

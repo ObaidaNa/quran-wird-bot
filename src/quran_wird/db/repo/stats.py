@@ -8,7 +8,7 @@ from collections.abc import Sequence
 from sqlalchemy import desc, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from ..models import UserStats
+from ..models import TaskMiss, UserStats, utcnow
 
 
 class StatsRepo:
@@ -43,11 +43,34 @@ class StatsRepo:
         stats.last_done_date = on
         return stats
 
-    async def record_missed(self, chat_id: int, user_id: int) -> UserStats:
+    async def record_missed(
+        self, chat_id: int, user_id: int, *, task_id: int | None = None
+    ) -> UserStats:
         stats = await self.get_or_create(chat_id, user_id)
+        if task_id is not None:
+            if await self.session.get(TaskMiss, (task_id, user_id)) is not None:
+                return stats
+            self.session.add(TaskMiss(task_id=task_id, user_id=user_id))
         stats.total_missed += 1
         stats.consecutive_missed += 1
         stats.current_streak = 0
+        return stats
+
+    async def repair_missed(self, chat_id: int, user_id: int, *, task_id: int) -> UserStats | None:
+        """Move one missed day to the done column, after a late catch-up read.
+
+        The streak is deliberately untouched: it counts days read on their own
+        day, and a wird read three weeks late is not one of those. Only the
+        totals move — and `consecutive_missed` resets separately, when the debt
+        is fully cleared.
+        """
+        stats = await self.get(chat_id, user_id)
+        miss = await self.session.get(TaskMiss, (task_id, user_id))
+        if stats is None or miss is None or miss.repaired_at is not None:
+            return stats
+        miss.repaired_at = utcnow()
+        stats.total_missed = max(0, stats.total_missed - 1)
+        stats.total_done += 1
         return stats
 
     async def leaderboard(

@@ -87,6 +87,39 @@ WEEKLY_CLOSER = (
     "﴿فَاسْتَقِمْ كَمَا أُمِرْتَ﴾ [هود: ١١٢] — أسبوعٌ مضى، وأسبوعٌ يبدأ.",
 )
 
+# ------------------------------------------------- catch-up nudges (private)
+# Reviewed in docs/PHRASES-CATCHUP.md. The catch-up plan rotates
+# through these three tones so a member who ignores one voice hears another:
+# gentle first, then steady encouragement, then near-silent brevity. Unlike the
+# group reminders, the tone never hardens into pressure — the plan's answer to
+# silence is to knock less often, not louder.
+
+CATCHUP_NUDGE_GENTLE = (
+    "مقطعك بانتظارك… آياتٌ قليلة لا تأخذ منك إلا دقائق.",
+    "خيرٌ لك قليلٌ كل يوم من كثيرٍ منقطع.",
+    "﴿وَرَتِّلِ الْقُرْآنَ تَرْتِيلًا﴾ [المزمل: ٤] — آيات يسيرة بين يديك.",
+    "ما زال باب التدارك مفتوحًا… ومقطعك جاهز.",
+)
+
+CATCHUP_NUDGE_STEADY = (
+    "إخوتك في المجموعة يمضون… وأنت قادرٌ على اللحاق بهم، آيةً آية.",
+    "«أحبّ الأعمال إلى الله أدومها وإن قلّ» — متفق عليه. مقطعك القليل خيرٌ من كثيرٍ مؤجَّل.",
+    "كل آية تقرؤها اليوم تُسقِط شيئًا مما فاتك.",
+    "لا تنظر إلى ما تراكم… انظر إلى الآيات القليلة التي بين يديك الآن.",
+)
+
+CATCHUP_NUDGE_BRIEF = (
+    "مقطعك ينتظرك 🌿",
+    "آيات قليلة… وخطوة تقرّبك من إخوتك.",
+    "ابدأ بآية واحدة — والبقية تتبعها.",
+)
+
+# The weekly knock on a paused plan's door.
+CATCHUP_PROBE = (
+    "مرّ أسبوع… وما زال وردك محفوظًا لك. متى شئت، مقطعك جاهز.",
+    "لا يُغلق بابُ التوبة… ولا بابُ التدارك. عودةٌ واحدة تكفي لتبدأ من جديد.",
+)
+
 # ------------------------------------------------------------ fixed templates
 
 NUDGE = (
@@ -171,10 +204,19 @@ class Phrases:
         self.done = ShuffleBag(DONE, rng)
         self.all_done = ShuffleBag(ALL_DONE, rng)
         self.weekly_closer = ShuffleBag(WEEKLY_CLOSER, rng)
+        self.catchup_gentle = ShuffleBag(CATCHUP_NUDGE_GENTLE, rng)
+        self.catchup_steady = ShuffleBag(CATCHUP_NUDGE_STEADY, rng)
+        self.catchup_brief = ShuffleBag(CATCHUP_NUDGE_BRIEF, rng)
+        self.catchup_probe = ShuffleBag(CATCHUP_PROBE, rng)
 
     def reminder(self, seq: int) -> ShuffleBag:
         """The pool for reminder number `seq` (1-based); later ones reuse the last."""
         return {1: self.reminder_first, 2: self.reminder_second}.get(seq, self.reminder_last)
+
+    def catchup_tone(self, tone_index: int) -> ShuffleBag:
+        """The nudge pool for this step of the rotation: gentle, steady, brief."""
+        pools = (self.catchup_gentle, self.catchup_steady, self.catchup_brief)
+        return pools[tone_index % len(pools)]
 
 
 phrases = Phrases()
